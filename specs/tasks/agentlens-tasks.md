@@ -1,10 +1,10 @@
 # Tasks — reflex-agentlens v0.1
 
-> Source specs: [Constitution](../constitution.md) v1.1 · [PRD](../prd/agentlens-v0.1.md) v1.1 ·
-> [API Spec](../api/agentlens-api-v1.md) v1.1 · [Tech Design](../technical/agentlens-architecture.md) v1.1 ·
-> [Data Model](../data-model/agentlens-schema.md) v1.0 · [Implementation Plan](../plans/agentlens-phase-1.md) v1.0
-> Plan phases detailed in this revision: **P0 (spikes) and P1 (foundation and `core`)** · Generated: 2026-10-31
-> Status: `APPROVED` · Version 1.0.1
+> Source specs: [Constitution](../constitution.md) v1.2 · [PRD](../prd/agentlens-v0.1.md) v1.1 ·
+> [API Spec](../api/agentlens-api-v1.md) v1.2 · [Tech Design](../technical/agentlens-architecture.md) v1.3 ·
+> [Data Model](../data-model/agentlens-schema.md) v1.1 · [Implementation Plan](../plans/agentlens-phase-1.md) v1.0
+> Plan phases detailed in this revision: **P0 (spikes), P1 (foundation and `core`) and P2 (store)** · Generated: 2026-10-31
+> Status: `IN REVIEW` (P2 detailing) · Version 1.1
 
 ## How this file works
 
@@ -388,7 +388,256 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 
 ---
 
-## Phases P2–P10 — to be detailed at phase start
+## Phase P2 — Store
+
+Detailed 2026-10-31 after P1 and M0. Inputs: Data Model v1.1, API v1.2, Tech Design v1.3 (DD-004
+concurrency rule, Analyze A-01), REQ-305 split (Delta Spec `changes/2026-10-req-305-percentile-budget/`).
+Every task lives under `src/reflex_agentlens/store/` and its tests under `tests/unit/store/` or
+`tests/contract/`; failing test first or in the same commit (Art. 8). Branches:
+`feat/P2-<nn>-<slug>` from `develop`.
+
+**Design note — protocol return types.** `store` cannot import `query` (import contract). The
+return types named in API §5 (`RunSummary`, `TraceDetail`, `Kpis`, …) are therefore
+`store.records` frozen dataclasses with the same names and storage-level fields (IDs as bytes or
+ULID strings, money as `int` nano-USD, times as `int` ns). `query.dto` builds the Pydantic DTOs of
+API §6 from them with the Data Model §8 conversions. This also closes Analyze A-05 for the
+storage side; the Pydantic DTO fields are fixed in P4.
+
+**Protocol method ownership (Analyze A-06).** Each `StorageBackend` method is implemented and
+contract-tested in exactly one task:
+
+| Task | Methods |
+|---|---|
+| P2-05.1 / P2-06.1 | `open`, `close`, `ping` (per backend) |
+| P2-02.2 | `schema_status`, `migrate` |
+| P2-05.2 / P2-06.1 | `write_batch` (per backend) |
+| P2-07.4 | `write_metric_points`, `agg_metric_token_usage` |
+| P2-08.1 | `list_projects`, `create_project`, `update_project`, `delete_project`, `create_api_key`, `list_api_keys`, `revoke_api_key`, `resolve_api_key`, `touch_api_key` |
+| P2-08.2 | `save_pricing`, `list_pricing_versions`, `get_pricing`, `list_unpriced_models`, `save_redaction_rules`, `get_ingest_settings`, `list_saved_filters`, `save_filter`, `delete_filter` |
+| P2-08.3 | `finalize_stale_runs`, `rebuild`, `recompute_costs` |
+| P2-07.1 | `list_runs`, `find_runs_by_trace_id`, `get_trace`, `get_span_raw`, `list_llm_calls`, `list_sources`, `distinct_values` |
+| P2-07.2 | `list_sessions`, `get_session` |
+| P2-07.3 | `agg_kpis`, `agg_runs_over_time`, `agg_tokens_cost_by_model`, `agg_latency_percentiles`, `agg_tool_stats`, `agg_by_source`, `agg_approvals` |
+| P2-09.1 | `purge_by_age`, `purge_by_size`, `storage_usage`, `last_purge`, `job_lock` |
+| P2-10.1 | `change_feed` |
+
+### P2-01.1 · Schema: hot tables and attribute codec
+- **What**: `store.schema` (one SQLAlchemy Core `MetaData` for both backends, `with_variant` /
+  `ddl_if`) for Data Model §2.6–2.15 (`sources`, `resources`, `sessions`, `runs`, `spans`,
+  `llm_calls`, `tool_calls`, `approvals`, `graph_nodes`, `span_search` with the FTS5 / tsvector
+  variants), physical types per §2.0, every index of those sections. `store.attrs`: the §1.4
+  attribute JSON codec (OTLP `AnyValue` ↔ JSON, `$b64`, NaN/Infinity strings, int64 range).
+- **REQ / design**: Data Model §1.3, §1.4, §2.0, §2.6–2.15, DD-008, REQ-030.b
+- **Depends on**: P1-06.1
+- **Done**: `metadata.create_all` succeeds on SQLite and PG (pg-marked test); a test compares the
+  created index names with the Data Model list; hypothesis round-trip test for the codec citing
+  REQ-030.b.
+- [ ]
+
+### P2-01.2 · Schema: settings and auxiliary tables; row records
+- **What**: The remaining tables (§2.1–2.5 `app_meta`, `projects`, `api_keys`,
+  `redaction_rule_sets`, `pricing_versions`/`pricing_entries`; §2.16–2.18 `metric_points`,
+  `saved_filters`, `purge_log`) with their CHECKs and FKs (cascades as §3). `store.records`: frozen
+  dataclasses for every row type and every protocol input/return type (see the design note).
+- **REQ / design**: Data Model §2.1–2.5, §2.16–2.18, §3, API §5
+- **Depends on**: P2-01.1
+- **Done**: `create_all` on both backends; a test asserts that deleting a Project cascades to every
+  dependent table (REQ-170 storage side); `mypy --strict` clean.
+- [ ]
+
+### P2-02.1 · Alembic environment and `0001_initial`
+- **What**: `store/migrations/env.py` (async engine, `render_as_batch` on SQLite, FTS5 shadow
+  tables excluded from autogenerate), packaged with the wheel; revision `0001_initial` creating all
+  of §2 except §2.19, branching per dialect (Data Model §5). It inserts `app_meta.instance_id` and
+  `created_at_ns`; **no pricing seed** (Analyze A-11).
+- **REQ / design**: REQ-074, Data Model §5, DD-008
+- **Depends on**: P2-01.2
+- **Done**: `upgrade head` on empty SQLite and PG produces a schema equal to `metadata.create_all`
+  (compared by reflection); `downgrade base` works in development.
+- [ ]
+
+### P2-02.2 · Schema status, guarded migration, version checks
+- **What**: `schema_status()` → `CURRENT | OUTDATED | NEWER` (from `alembic_version` vs. the
+  package head); `migrate()` under `pg_advisory_lock(hashtext('agentlens:migrate'))` (waiters see
+  the finished schema), in-process on SQLite; startup checks SQLite ≥ 3.43 with FTS5 and PG ≥ 15,
+  raising `StorageUnavailable` with the reason.
+- **REQ / design**: REQ-074.a–d, Data Model §5, TD §9.2
+- **Depends on**: P2-02.1
+- **Done**: tests citing REQ-074 for each status (NEWER via a fake future revision), two concurrent
+  `migrate()` calls on PG (one waits, both see CURRENT), a too-old SQLite version simulated.
+- [ ]
+
+### P2-03.1 · Storage protocol and dialect operations
+- **What**: `store.protocol.StorageBackend` (typed `Protocol`, API §5 v1.2) and
+  `store.dialect.SqlDialectOps`: upsert helpers, JSON extraction, `percentile_sql()` (nearest
+  rank, one pass for several percentiles, rank in IEEE double, Data Model v1.0.1), FTS query
+  builder with token whitelist (REQ-325.b) over `core` search normalization (DD-006:
+  NFKD, strip marks, lowercase, `[\W_]+` → space; shared with ingest).
+- **REQ / design**: REQ-070.a, REQ-325.b, DD-005, DD-006
+- **Depends on**: P2-01.2
+- **Done**: unit tests for the FTS builder (operators and quotes in user input never reach SQL
+  syntax, citing REQ-325.b) and for `percentile_sql` against a Python nearest-rank reference.
+- [ ]
+
+### P2-04.1 · Contract-suite harness
+- **What**: `tests/contract/conftest.py`: backend-parametrized fixture (`sqlite` always, `pg` when
+  `AGENTLENS_TEST_PG_URL` is set; a fresh database per test module), a seeded dataset builder for
+  normalized batches (ported from the S2 generator), and a helper that asserts the number of rows
+  fetched per aggregate.
+- **REQ / design**: REQ-070.b, REQ-106.h
+- **Depends on**: P2-03.1
+- **Done**: a smoke contract test runs on SQLite locally and on PG 15/18 in CI; the rows-fetched
+  helper fails on a deliberately unbounded query.
+- [ ]
+
+### P2-05.1 · SQLite backend: engines and lifecycle
+- **What**: `store/sqlite/backend.py`: one WRITE connection (`BEGIN IMMEDIATE`) and a READ pool,
+  pragmas of Data Model §2.0 on every connection, `open`/`close`/`ping`.
+- **REQ / design**: REQ-071, DD-003, DD-008
+- **Depends on**: P2-02.2, P2-04.1
+- **Done**: tests: WAL active, pragmas set on every pooled connection, `ping` false after the file
+  disappears.
+- [ ]
+
+### P2-05.2 · SQLite `write_batch`
+- **What**: API §5.1 in one transaction: Source/Session upserts, Run stubs (Q6 sorted
+  `ON CONFLICT DO UPDATE … RETURNING`), span insert-or-ignore, derived rows for new spans only,
+  FTS5 documents, Q7 Run recompute and Session recompute; returns `WriteResult`.
+- **REQ / design**: REQ-031, REQ-032, REQ-036, REQ-037.a, REQ-038, REQ-073.a, DD-003, DD-004
+- **Depends on**: P2-05.1
+- **Done**: contract tests citing REQ-038 (duplicates counted, not stored twice), REQ-037.a
+  (hypothesis: any order and batching of the same span set gives identical `runs`/`sessions`
+  rows), REQ-032.b (status rules with an injected clock) and REQ-036.b (Session totals).
+- [ ]
+
+### P2-06.1 · PostgreSQL backend and `write_batch` with locks
+- **What**: `store/postgres/backend.py` on asyncpg: lifecycle, `write_batch` with the DD-004
+  concurrency rule (Runs locked in (`project_pk`, `trace_id`) order, Sessions `FOR UPDATE` by `pk`,
+  one group retry on `40P01`), `span_search` tsvector + GIN.
+- **REQ / design**: REQ-072.a, REQ-073.b, DD-004 (A-01)
+- **Depends on**: P2-05.2
+- **Done**: the P2-05.2 contract tests pass on PG 15 and 18.
+- [ ]
+
+### P2-06.2 · Multi-writer contract test
+- **What**: Two backends on the same PG database write interleaved batches of the **same** traces
+  (with duplicates) concurrently; plus a finalizer racing a writer.
+- **REQ / design**: REQ-072.b, REQ-205.c, Analyze A-01
+- **Depends on**: P2-06.1
+- **Done**: test citing REQ-072.b: after both finish, `runs` and `sessions` equal a single-writer
+  ingest of the same set; repeated 20× without a deadlock escaping the retry.
+- [ ]
+
+### P2-07.1 · Reads: runs and traces
+- **What**: Q1 (keyset), Q2 (derived-table filters), Q3 (attribute and text filters), Q4, Q5 and
+  Q5b on both backends: `list_runs`, `find_runs_by_trace_id`, `get_trace`, `get_span_raw`,
+  `list_llm_calls`, `list_sources`, `distinct_values`. Every read takes `ProjectScope`.
+- **REQ / design**: REQ-100, REQ-101, REQ-103, REQ-151.e (storage side), REQ-073, Data Model Q1–Q5b
+- **Depends on**: P2-05.2, P2-06.1
+- **Done**: contract tests citing REQ-100/101/103 (each filter, keyset stability under inserts,
+  scope isolation between Projects), identical results on both backends.
+- [ ]
+
+### P2-07.2 · Reads: Sessions
+- **What**: Q9 `list_sessions` and `get_session` on both backends.
+- **REQ / design**: REQ-105, Data Model Q9
+- **Depends on**: P2-07.1
+- **Done**: contract tests citing REQ-105.a/b.
+- [ ]
+
+### P2-07.3 · Dashboard aggregates
+- **What**: Q8 and Q10a–f: `agg_kpis`, `agg_runs_over_time`, `agg_tokens_cost_by_model`,
+  `agg_latency_percentiles` (Q10c, its own method so the dashboard can fetch it separately,
+  REQ-305.b), `agg_tool_stats`, `agg_by_source`, `agg_approvals`; automatic bucket size.
+- **REQ / design**: REQ-106.a–h, REQ-305 (shape), DD-005
+- **Depends on**: P2-07.1
+- **Done**: contract tests citing REQ-106.a–g on a known dataset (exact expected values, identical
+  on both backends, `includes_unpriced` per REQ-061.c) and REQ-106.h (rows fetched bounded).
+- [ ]
+
+### P2-07.4 · Metric points
+- **What**: `write_metric_points` and Q11 `agg_metric_token_usage` (preferred
+  `gen_ai.client.inference.usage.*`, legacy `gen_ai.client.token.usage`).
+- **REQ / design**: REQ-005 (storage side), REQ-107, Data Model §2.16, Q11
+- **Depends on**: P2-07.3
+- **Done**: contract tests citing REQ-107.a.
+- [ ]
+
+### P2-08.1 · Projects and API keys
+- **What**: Project CRUD (slug rules, delete cascades), API key records (hash + salt only),
+  `resolve_api_key` (Q14 by `key_id`), `touch_api_key` at most once per minute, `revoke_api_key`.
+- **REQ / design**: REQ-170 (storage side), REQ-320.a, REQ-006 (storage side), Data Model §2.2–2.3, Q14
+- **Depends on**: P2-05.2
+- **Done**: contract tests citing REQ-320.a (no plaintext secret in any column after a key is
+  created and used) and `Conflict` on duplicate slugs.
+- [ ]
+
+### P2-08.2 · Pricing, redaction rules, saved filters, ingest settings
+- **What**: `save_pricing` (new immutable version, `effective_from_ns`), `list_pricing_versions`,
+  `get_pricing(at_ns)` (version in effect at time t), `list_unpriced_models`,
+  `save_redaction_rules`, `get_ingest_settings`, saved filters CRUD.
+- **REQ / design**: REQ-060.a/c, REQ-061.b (resolution data), REQ-102.a, REQ-172 (storage side)
+- **Depends on**: P2-08.1
+- **Done**: contract tests citing REQ-060.a (saved versions never change), REQ-060.c (lookup by
+  time) and REQ-102.a.
+- [ ]
+
+### P2-08.3 · Derived-view maintenance
+- **What**: `finalize_stale_runs` (Q12 with `FOR UPDATE SKIP LOCKED` on PG), `rebuild` (re-derives
+  spans through an injected `SpanDeriver`, then recomputes Runs/Sessions; tests use a fake
+  deriver), `recompute_costs` (new pricing version recorded on each LLM call, Run, Session). All
+  follow the DD-004 lock order.
+- **REQ / design**: REQ-032.b, REQ-042, REQ-062, DD-004
+- **Depends on**: P2-06.2, P2-08.2
+- **Done**: contract tests citing REQ-032.b (in_progress → incomplete after the window),
+  REQ-042 (rebuild is idempotent) and REQ-062.a.
+- [ ]
+
+### P2-09.1 · Retention and job locks
+- **What**: Q13 purge by age and by size in bounded batches (each its own transaction, runs locked
+  first on PG), Session recompute after purge, `purge_log`, `storage_usage` (estimated and
+  physical bytes), `last_purge`, `job_lock` (PG advisory lock; in-process lock on SQLite).
+- **REQ / design**: REQ-090, REQ-091, REQ-092.b/c, REQ-173 (storage side)
+- **Depends on**: P2-07.2
+- **Done**: contract tests citing REQ-090.a, REQ-091.a (purges down to ≤ 90 % of the limit),
+  REQ-092.b (a second `job_lock` holder gets False).
+- [ ]
+
+### P2-10.1 · Change feed: in-process
+- **What**: `store.changefeed`: thread-safe broadcaster; `write_batch`, finalizer and purge publish
+  one `ChangeEvent` per Project **after** commit (`run_keys` capped at 200 with `truncated`).
+- **REQ / design**: REQ-140.a (storage side), DD-007, API §5.2
+- **Depends on**: P2-05.2
+- **Done**: tests: no event for a rolled-back transaction; events arrive after commit; cap honoured.
+- [ ]
+
+### P2-10.2 · Change feed: PostgreSQL NOTIFY/LISTEN
+- **What**: `pg_notify` inside the commit transaction (payload ≤ 7,900 bytes, else `truncated`),
+  one LISTEN connection per process with `origin_id` filtering (no echo of own events), polling
+  fallback while the LISTEN connection is down.
+- **REQ / design**: REQ-140.a, REQ-205.c, DD-007
+- **Depends on**: P2-10.1, P2-06.1
+- **Done**: pg-marked tests: a second process's write is seen within 3 s; own events not
+  duplicated; LISTEN connection killed → polling delivers, then LISTEN resumes.
+- [ ]
+
+### P2-11.1 · Contract-suite completion and phase gate
+- **What**: Cross-backend parity tests (run lists, search result sets per REQ-073.b with DD-006
+  normalization, percentiles, Sessions; natural keys only); CI runs `upgrade head` from empty on
+  SQLite and PG 15/18.
+- **REQ / design**: REQ-070.b, REQ-072.a, REQ-073.b, REQ-074
+- **Depends on**: P2-07.1 … P2-10.2
+- **Done**: plan P2 Done criteria: contract suite green on SQLite, PG 15 and 18 in CI; `store`
+  coverage ≥ 85 %; `mypy --strict` clean; no import of `ingest`/`query`/`reflex`.
+- [ ]
+
+**Suggested batches:** (1) P2-01.1, P2-01.2, P2-02.1, P2-02.2 · (2) P2-03.1, P2-04.1, P2-05.1,
+P2-05.2 · (3) P2-06.1, P2-06.2, P2-07.1 · (4) P2-07.2, P2-07.3, P2-07.4, P2-08.1 · (5) P2-08.2,
+P2-08.3, P2-09.1 · (6) P2-10.1, P2-10.2, P2-11.1.
+
+---
+
+## Phases P3–P10 — to be detailed at phase start
 
 Each phase gets its atomic tasks in a new revision of this file when the previous phase's Done
 criteria are met. The plan tasks, their scope, estimates and dependencies are fixed in the
@@ -396,7 +645,6 @@ criteria are met. The plan tasks, their scope, estimates and dependencies are fi
 
 | Phase | Plan tasks | Detailed when | Prerequisite inputs |
 |---|---|---|---|
-| P2 Store | P2-01 … P2-11 | P1 done + M0 | S2 rollup decision (P0-10.1) |
 | P3 Ingest | P3-01 … P3-13 | P1 done (P3-01…05 may start alongside P2) | Pinned `SEMCONV_GENAI_COMMIT` chosen in P3-01 |
 | P4 Query | P4-01 … P4-06 | P2-07 done | — |
 | P5 Runtime/CLI | P5-01 … P5-08 | P3-09 done | — |
@@ -597,3 +845,4 @@ parallel, on the S2 branch).
 | 1.0-draft.1 | 2026-10-31 | Ernesto Crespo (with Claude) | Atomic tasks for P0 and P1; full-release traceability matrix (103 REQs, 0 uncovered) |
 | 1.0 | 2026-10-31 | Ernesto Crespo | Approved (rolling-wave detailing accepted) |
 | 1.0.1 | 2026-10-31 | Ernesto Crespo (with Claude) | Analyze fixes: A-03 (`percentile_disc` in P0-09.2), A-13 (removed [P] from P0-05.1/05.2, P1-02.1/02.2/02.3: shared files), A-15 (new P0-09.3), A-16 (new P0-05.3) |
+| 1.1 | 2026-10-31 | Ernesto Crespo (with Claude) | Phase P2 detailed: 21 atomic tasks, protocol-method ownership table (A-06), protocol return types as `store.records` (A-05, storage side), A-01 multi-writer test (P2-06.2), no pricing seed in `0001_initial` (A-11) |
