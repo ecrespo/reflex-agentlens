@@ -10,7 +10,7 @@ from sqlalchemy.exc import DBAPIError
 from reflex_agentlens.core.errors import StorageUnavailable
 from reflex_agentlens.store.postgres.backend import PostgresBackend, async_url
 from reflex_agentlens.store.protocol import StorageBackend
-from reflex_agentlens.store.records import NormalizedBatch, SchemaStatus
+from reflex_agentlens.store.records import NormalizedBatch, SchemaStatus, WriteResult
 from reflex_agentlens.store.writepath import WriteOutcome
 
 
@@ -53,14 +53,14 @@ async def test_unreachable_server_is_storage_unavailable() -> None:
 def _scripted(b: PostgresBackend, script: list[Any]) -> list[int]:
     calls: list[int] = []
 
-    async def fake(batch: NormalizedBatch) -> WriteOutcome:
+    async def fake(batch: NormalizedBatch) -> WriteResult:
         calls.append(1)
         step = script.pop(0)
         if isinstance(step, BaseException):
             raise step
-        return step
+        return WriteResult(step.inserted, step.duplicates, step.affected_runs, b._clock())
 
-    b._write_once = fake  # type: ignore[method-assign]
+    b._write_and_publish = fake  # type: ignore[method-assign]
     return calls
 
 

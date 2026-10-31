@@ -253,13 +253,16 @@ def touch_api_key(conn: Connection, key_id: str, at_ns: int) -> None:
     )
 
 
-def revoke_api_key(conn: Connection, key_id: str, at_ns: int) -> None:
-    """REQ-170.c: terminal; revoking twice keeps the first time."""
+def revoke_api_key(conn: Connection, key_id: str, at_ns: int) -> str:
+    """REQ-170.c: terminal; revoking twice keeps the first time. Returns the Project ID."""
     row = conn.execute(
-        select(k.c.project_pk, k.c.revoked_at_ns).where(k.c.key_id == key_id)
+        select(k.c.project_pk, k.c.revoked_at_ns, p.c.id)
+        .select_from(k.join(p, p.c.pk == k.c.project_pk))
+        .where(k.c.key_id == key_id)
     ).first()
     if row is None:
         raise NotFound("api key")
     if row.revoked_at_ns is None:
         conn.execute(update(k).where(k.c.key_id == key_id).values(revoked_at_ns=at_ns))
         _bump(conn, row.project_pk, at_ns)
+    return str(row.id)

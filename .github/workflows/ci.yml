@@ -73,6 +73,8 @@ jobs:
           python-version: ${{ matrix.python }}
           enable-cache: true
       - run: uv sync --frozen
+      - name: Alembic upgrade head from an empty SQLite database
+        run: uv run python scripts/check_upgrade_head.py sqlite
       - name: pytest with coverage gate (ingest + store + query >= 85 %)
         run: uv run pytest --cov --cov-report=term
 
@@ -107,5 +109,7 @@ jobs:
           python-version: "3.13"
           enable-cache: true
       - run: uv sync --frozen
+      - name: Alembic upgrade head from an empty PostgreSQL schema
+        run: uv run python scripts/check_upgrade_head.py pg --url "$AGENTLENS_TEST_PG_URL"
       - name: pytest (PostgreSQL-backed tests)
         run: uv run pytest -m pg

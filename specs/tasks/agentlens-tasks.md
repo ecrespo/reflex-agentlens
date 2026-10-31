@@ -609,7 +609,7 @@ contract-tested in exactly one task:
 - **REQ / design**: REQ-140.a (storage side), DD-007, API §5.2
 - **Depends on**: P2-05.2
 - **Done**: tests: no event for a rolled-back transaction; events arrive after commit; cap honoured.
-- [ ]
+- [x] 2026-10-31 · PR #15
 
 ### P2-10.2 · Change feed: PostgreSQL NOTIFY/LISTEN
 - **What**: `pg_notify` inside the commit transaction (payload ≤ 7,900 bytes, else `truncated`),
@@ -619,7 +619,7 @@ contract-tested in exactly one task:
 - **Depends on**: P2-10.1, P2-06.1
 - **Done**: pg-marked tests: a second process's write is seen within 3 s; own events not
   duplicated; LISTEN connection killed → polling delivers, then LISTEN resumes.
-- [ ]
+- [x] 2026-10-31 · PR #15
 
 ### P2-11.1 · Contract-suite completion and phase gate
 - **What**: Cross-backend parity tests (run lists, search result sets per REQ-073.b with DD-006
@@ -629,7 +629,7 @@ contract-tested in exactly one task:
 - **Depends on**: P2-07.1 … P2-10.2
 - **Done**: plan P2 Done criteria: contract suite green on SQLite, PG 15 and 18 in CI; `store`
   coverage ≥ 85 %; `mypy --strict` clean; no import of `ingest`/`query`/`reflex`.
-- [ ]
+- [x] 2026-10-31 · PR #15
 
 **Suggested batches:** (1) P2-01.1, P2-01.2, P2-02.1, P2-02.2 · (2) P2-03.1, P2-04.1, P2-05.1,
 P2-05.2 · (3) P2-06.1, P2-06.2, P2-07.1 · (4) P2-07.2, P2-07.3, P2-07.4, P2-08.1 · (5) P2-08.2,
@@ -817,6 +817,7 @@ the matrix). No requirement is deferred at this point.
 | 2026-10-31 | P2-03.1 … P2-07.1 | Done | PR #12; protocol, SQLite and PG `write_batch`, multi-writer test, run/trace reads; PG text ordering forced byte-wise (`COLLATE "C"`) |
 | 2026-10-31 | P2-07.2, 07.3, 07.4, 08.1 | Done | PR #13; Sessions, aggregates (auto bucket minute ≤ 2 h, hour ≤ 3 d), metric points (inference counters preferred over the legacy histogram), Projects and API keys |
 | 2026-10-31 | P2-08.2, 08.3, 09.1 | Done | PR #14; pricing versions, finalizer (`SKIP LOCKED`), rebuild, cost recompute, retention by age/size, job locks (PG advisory); retention age clamped to avoid BIGINT overflow |
+| 2026-10-31 | P2-10.1, 10.2, 11.1 | Done | PR #15; change feed (after-commit publish, PG NOTIFY in the commit transaction, LISTEN with origin/namespace filtering, fingerprint polling fallback); parity SQLite↔PG on runs, search sets, aggregates, percentiles, Sessions; `scripts/check_upgrade_head.py` in CI. **P2 gate**: 681 passed, `store` coverage 95 %. Finding: tied Sessions are ordered by the Session ULID (surrogate), so tie order differs across databases |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).

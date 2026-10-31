@@ -23,11 +23,12 @@ from sqlalchemy import BigInteger, Connection, case, delete, func, insert, liter
 
 from reflex_agentlens.store import schema as s
 from reflex_agentlens.store.recompute import recompute_sessions
-from reflex_agentlens.store.records import PurgeReport, StorageUsage
+from reflex_agentlens.store.records import PurgeReport, RunKey, StorageUsage
 
 __all__ = [
     "METRIC_POINT_BYTES_EST",
     "PURGE_LOG_KEEP",
+    "PurgeBatch",
     "age_batch",
     "cleanup",
     "estimated_bytes",
@@ -58,25 +59,34 @@ def _cutoff(now_ns: int, max_age_s: Any) -> Any:
     return literal(now_ns, BigInteger) - clamped * literal(NS_PER_S, BigInteger)
 
 
-def _delete_runs(conn: Connection, run_pks: Sequence[int], now_ns: int) -> int:
-    """Delete whole traces; returns their estimated bytes."""
-    stmt = select(r.c.pk, r.c.bytes_est, r.c.session_pk).where(r.c.pk.in_(run_pks))
-    stmt = stmt.order_by(r.c.project_pk, r.c.trace_id)
+PurgeBatch = tuple[int, int, list[RunKey]]
+"""Traces deleted, their estimated bytes, and their Run keys (for the change feed)."""
+
+
+def _delete_runs(conn: Connection, run_pks: Sequence[int], now_ns: int) -> PurgeBatch:
+    """Delete whole traces in DD-004 order."""
+    stmt = (
+        select(r.c.pk, r.c.bytes_est, r.c.session_pk, p.c.id, r.c.trace_id)
+        .select_from(r.join(p, p.c.pk == r.c.project_pk))
+        .where(r.c.pk.in_(run_pks))
+        .order_by(r.c.project_pk, r.c.trace_id)
+    )
     if conn.dialect.name == "postgresql":
         stmt = stmt.with_for_update(of=r)
     rows = conn.execute(stmt).all()
     if not rows:
-        return 0
+        return 0, 0, []
     pks = [row[0] for row in rows]
     sessions = sorted({row[2] for row in rows if row[2] is not None})
     conn.execute(delete(r).where(r.c.pk.in_(pks)))
     if sessions:
         recompute_sessions(conn, sessions, now_ns)
         conn.execute(delete(ses).where(ses.c.pk.in_(sessions), ses.c.run_count == 0))
-    return int(sum(row[1] for row in rows))
+    keys = [RunKey(row[3], bytes(row[4])) for row in rows]
+    return len(rows), int(sum(row[1] for row in rows)), keys
 
 
-def age_batch(conn: Connection, now_ns: int, batch_traces: int) -> tuple[int, int]:
+def age_batch(conn: Connection, now_ns: int, batch_traces: int) -> PurgeBatch:
     """Q13 by age: the oldest ``batch_traces`` traces past their Project's maximum age."""
     cutoff = _cutoff(now_ns, p.c.retention_max_age_s)
     pks = list(
@@ -88,12 +98,10 @@ def age_batch(conn: Connection, now_ns: int, batch_traces: int) -> tuple[int, in
             .limit(batch_traces)
         ).scalars()
     )
-    return len(pks), _delete_runs(conn, pks, now_ns) if pks else 0
+    return _delete_runs(conn, pks, now_ns)
 
 
-def size_batch(
-    conn: Connection, bytes_to_free: int, batch_traces: int, now_ns: int
-) -> tuple[int, int]:
+def size_batch(conn: Connection, bytes_to_free: int, batch_traces: int, now_ns: int) -> PurgeBatch:
     """Q13 by size: the globally oldest traces, at most ``batch_traces``, until enough is freed."""
     rows = conn.execute(
         select(r.c.pk, r.c.bytes_est).order_by(r.c.last_span_ns, r.c.pk).limit(batch_traces)
@@ -104,7 +112,7 @@ def size_batch(
             break
         pks.append(pk)
         freed += size
-    return len(pks), _delete_runs(conn, pks, now_ns) if pks else 0
+    return _delete_runs(conn, pks, now_ns)
 
 
 def estimated_bytes(conn: Connection) -> int:

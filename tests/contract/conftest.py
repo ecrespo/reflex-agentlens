@@ -11,6 +11,7 @@ from __future__ import annotations
 import secrets
 import shutil
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -84,12 +85,13 @@ def sqlite_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return path
 
 
-@pytest.fixture(params=BACKENDS)
-async def db(
-    request: pytest.FixtureRequest, sqlite_template: Path, tmp_path: Path
+@asynccontextmanager
+async def open_contract_db(
+    name: str, request: pytest.FixtureRequest, sqlite_template: Path, tmp_path: Path
 ) -> AsyncIterator[ContractDB]:
+    """A fresh, migrated database of backend ``name`` with its own injected clock."""
     clock = Clock()
-    if request.param == "sqlite":
+    if name == "sqlite":
         path = tmp_path / "agentlens.db"
         shutil.copyfile(sqlite_template, path)
         backend = SqliteBackend(path, clock=clock)
@@ -115,3 +117,23 @@ async def db(
         async with admin.begin() as conn:
             await conn.execute(text(f"DROP SCHEMA {schema} CASCADE"))
         await admin.dispose()
+
+
+@pytest.fixture(params=BACKENDS)
+async def db(
+    request: pytest.FixtureRequest, sqlite_template: Path, tmp_path: Path
+) -> AsyncIterator[ContractDB]:
+    async with open_contract_db(request.param, request, sqlite_template, tmp_path) as contract:
+        yield contract
+
+
+@pytest.fixture
+async def pair(
+    request: pytest.FixtureRequest, sqlite_template: Path, tmp_path: Path
+) -> AsyncIterator[tuple[ContractDB, ContractDB]]:
+    """SQLite and PostgreSQL side by side, for cross-backend parity (REQ-070.b)."""
+    async with (
+        open_contract_db("sqlite", request, sqlite_template, tmp_path) as lite,
+        open_contract_db("pg", request, sqlite_template, tmp_path) as pg,
+    ):
+        yield lite, pg

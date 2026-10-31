@@ -21,6 +21,7 @@ Implemented so far:
   ``delete_filter``
 - P2-08.3: ``finalize_stale_runs``, ``rebuild``, ``recompute_costs``
 - P2-09.1: ``purge_by_age``, ``purge_by_size``, ``storage_usage``, ``last_purge``, ``job_lock``
+- P2-10.1 / P2-10.2: ``changes`` (the :class:`ChangeFeed`), ``start_change_listener``
 - P2-08.1: ``list_projects``, ``create_project``, ``update_project``, ``delete_project``,
   ``create_api_key``, ``list_api_keys``, ``revoke_api_key``, ``resolve_api_key``, ``touch_api_key``
 """
@@ -31,6 +32,7 @@ from collections.abc import Sequence
 from contextlib import AbstractAsyncContextManager
 from typing import Protocol, runtime_checkable
 
+from reflex_agentlens.store.changefeed import ChangeFeed
 from reflex_agentlens.store.records import (
     AggQuery,
     ApiKeyRecord,
@@ -92,6 +94,12 @@ class StorageBackend(Protocol):
     """A storage backend. Every implementation passes ``tests/contract/`` (REQ-070.b)."""
 
     # ── lifecycle ────────────────────────────────────────────────────────────────────────────
+
+    changes: ChangeFeed
+    """API §5.2: events published after each commit; lossy, subscribers re-query."""
+
+    async def start_change_listener(self) -> None:
+        """DD-007: receive other processes' events (PostgreSQL LISTEN); no-op on SQLite."""
 
     async def open(self) -> None:
         """Connect pools and check the database version. Never migrates implicitly."""
