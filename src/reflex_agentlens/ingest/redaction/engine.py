@@ -2,8 +2,9 @@
 
 Order: field rules (``drop`` removes the key, ``mask`` replaces the value; matched on the dotted
 path at any depth), then pattern rules on every string leaf of span, event, link and resource
-attributes, the status message, the span name and event names. Integers (attribute values and
-numbers inside JSON documents) are scanned as text, so a card number sent as a number is caught.
+attributes, the status message, the span name and event names. Integers and integral doubles
+(attribute values and numbers inside JSON documents) are scanned as text, so a card number sent
+as a number is caught.
 Attribute *keys* are never rewritten (REQ-039.a covers values; keys drive the mapping). Exception
 messages and stack traces are event attributes, so they are covered. A string that holds JSON
 (``gen_ai.input.messages`` and friends) is parsed, redacted leaf by leaf and re-serialized, so a
@@ -16,8 +17,9 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import math
 from collections.abc import Callable
-from typing import Any
+from typing import Any, TypeGuard
 
 from reflex_agentlens.ingest.normalize.spans import (
     FLAG_REDACTED,
@@ -63,9 +65,18 @@ def _plain(text: str, rules: CompiledRules, out: _Outcome) -> str:
     return text
 
 
-def _number(value: int, rules: CompiledRules, out: _Outcome) -> int | str:
-    """An integer can be a card or phone number: scan its text, replace it if anything matched."""
-    text = str(value)
+def _scannable(value: object) -> TypeGuard[float]:
+    """Integers, and doubles holding an integer (a card number sent as ``4111….0``)."""
+    if isinstance(value, bool):
+        return False
+    return isinstance(value, int) or (
+        isinstance(value, float) and math.isfinite(value) and value.is_integer()
+    )
+
+
+def _number(value: float, rules: CompiledRules, out: _Outcome) -> float | str:
+    """A number can be a card or phone number: scan its digits, replace it if anything matched."""
+    text = str(int(value))
     new = _plain(text, rules, out)
     return value if new == text else new
 
@@ -73,7 +84,7 @@ def _number(value: int, rules: CompiledRules, out: _Outcome) -> int | str:
 def _leaves(value: Any, rules: CompiledRules, out: _Outcome) -> Any:
     if isinstance(value, str):
         return _plain(value, rules, out)
-    if isinstance(value, int) and not isinstance(value, bool):
+    if _scannable(value):
         return _number(value, rules, out)
     if isinstance(value, list):
         return [_leaves(v, rules, out) for v in value]
@@ -112,7 +123,7 @@ def _tree(value: JsonValue, path: str, rules: CompiledRules, out: _Outcome) -> J
         return _fields(value, rules, out, f"{path}.")
     if isinstance(value, list):
         return [_tree(v, f"{path}.{i}", rules, out) for i, v in enumerate(value)]
-    if isinstance(value, int) and not isinstance(value, bool) and rules.patterns:
+    if rules.patterns and _scannable(value):
         new = _number(value, rules, out)
         if new != value:
             out.changed = True

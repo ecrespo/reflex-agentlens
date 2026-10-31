@@ -337,18 +337,21 @@ def test_span_and_event_names_are_redacted() -> None:
 
 def test_integers_are_scanned_as_text() -> None:
     """A card number sent as a number (attribute or inside JSON) is caught; others are kept."""
-    doc = json.dumps({"card": 4111111111111111, "qty": 3, "ok": True})
-    d = dataclasses.replace(
-        make(), attributes={"card": 4111111111111111, "n": 42, "flag": True, "doc": doc}
-    )
+    doc = json.dumps({"card": 4111111111111111, "qty": 3, "ok": True, "f": 4111111111111111.0})
+    attrs = {"card": 4111111111111111, "dbl": 4111111111111111.0, "ratio": 0.5, "nan": float("nan"),
+             "n": 42, "flag": True, "doc": doc}  # fmt: skip
+    d = dataclasses.replace(make(), attributes=attrs)  # type: ignore[arg-type]
     out = redact_draft(d, rules("credit_card"))
     assert out.attributes["card"] == "[REDACTED:credit_card]"
+    assert out.attributes["dbl"] == "[REDACTED:credit_card]"
+    assert out.attributes["ratio"] == 0.5
     assert out.attributes["n"] == 42
     assert out.attributes["flag"] is True
     assert json.loads(str(out.attributes["doc"])) == {
         "card": "[REDACTED:credit_card]",
         "qty": 3,
         "ok": True,
+        "f": "[REDACTED:credit_card]",
     }
     assert out.flags & FLAG_REDACTED
 
