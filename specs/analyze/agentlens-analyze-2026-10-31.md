@@ -95,4 +95,8 @@ The Analyze presents findings only; approval is the maintainer's.
 | A-09 | Moot: rollups not adopted (Delta Spec `changes/2026-10-req-305-percentile-budget/`); Data Model §2.19 marked |
 | A-11 | Data Model v1.1 §5: pricing seed moved from `0001_initial` to the first-run bootstrap |
 | A-05 (storage side) | Protocol types are `store.records` dataclasses (API v1.2 §5); Pydantic DTO fields stay for P4 |
+| A-04 | Tech Design v1.4 DD-003 per-batch savepoints; API v1.3 `write_group` / `BatchRejected` (400 / `INVALID_ARGUMENT`) |
+| A-07 | Tech Design v1.4 Flow 1: redaction before truncation; canary test in P3 |
+| A-08 | Data Model v1.2 §2.1 `session_key`, §2.8 HMAC-suffixed natural key when redaction changes a conversation ID; API v1.3 `get_or_create_secret` |
+| A-17 | API v1.3 §3.6 `future_timestamp` (`ingest.max_clock_skew`, default 1 h) and `older_than_retention` |
 

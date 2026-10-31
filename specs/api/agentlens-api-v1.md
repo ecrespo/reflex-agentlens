@@ -6,7 +6,7 @@
 |---|---|
 | **Author** | Ernesto Crespo (`ecrespo`) |
 | **Status** | `APPROVED` |
-| **API version** | v1.2 (ships with package 0.1.0) |
+| **API version** | v1.3 (ships with package 0.1.0) |
 | **Date** | 2026-10-30 |
 | **Related PRD** | [`specs/prd/agentlens-v0.1.md`](../prd/agentlens-v0.1.md) v1.1 |
 | **Governed by** | [`specs/constitution.md`](../constitution.md) v1.0 |
@@ -147,6 +147,7 @@ Discarded non-GenAI metrics are *not* rejections, so they are not reported there
 | Unsupported media type / encoding | 415 | n/a | No | — | 325 |
 | Project rate limit exceeded | 429 | `RESOURCE_EXHAUSTED` + `RetryInfo` | Yes | seconds until a token is available (≥ 1) | 007.a |
 | Write pipeline saturated / commit latency over threshold | 503 | `UNAVAILABLE` | Yes | `ingest.overload_retry_after` (default 2 s) | 009.b |
+| Batch rejected by a database constraint (Tech Design DD-003) | 400 | `INVALID_ARGUMENT` | No | — | 009.a |
 | Database unreachable | 503 | `UNAVAILABLE` | Yes | 5 s | 330 |
 | Shutting down | 503 | `UNAVAILABLE` | Yes | 1 s | 331 |
 | Demo mode | 403 | `PERMISSION_DENIED` | No | — | 231.b |
@@ -209,6 +210,8 @@ known limitation in v0.1.
 | `end_time_unix_nano` < `start_time_unix_nano` | `end_before_start` |
 | `start_time_unix_nano` == 0 | `missing_start_time` |
 | Redaction hook raised | `redaction_hook_error` [REQ-039.e] |
+| `start_time_unix_nano` > receive time + `ingest.max_clock_skew` | `future_timestamp` |
+| `end_time_unix_nano` < receive time − the Project's retention max age (when > 0) | `older_than_retention` |
 
 An in-progress span with `end_time_unix_nano == 0` is **invalid** in OTLP export semantics and
 is rejected as `end_before_start`. Exporters only export ended spans.
@@ -274,6 +277,8 @@ class StorageBackend(Protocol):
 
     # ── ingest path ───────────────────────────────────────────────────────
     async def write_batch(self, batch: NormalizedBatch) -> WriteResult: ...
+    async def write_group(self, batches: Sequence[NormalizedBatch]) -> list[WriteResult | BatchRejected]: ...
+    async def get_or_create_secret(self, name: Literal["session_key"]) -> bytes: ...  # app_meta, shared by all processes
     async def write_metric_points(self, points: Sequence[MetricPoint]) -> int: ...
     async def resolve_api_key(self, key_id: str) -> ApiKeyRecord | None: ...
     async def touch_api_key(self, key_id: str, at_ns: int) -> None: ...
@@ -368,7 +373,18 @@ class WriteResult:
     duplicates: int
     affected_runs: list[RunKey]
     committed_at_ns: int
+
+@dataclass(frozen=True, slots=True)
+class BatchRejected:
+    reason: str        # fixed key, e.g. "constraint_violation"; never request data
 ```
+
+`write_group(batches)` applies the steps above to each batch in **one** transaction with one
+`SAVEPOINT` per batch and returns one result per batch, in order. A batch whose statements fail
+with a data error (integrity or data exception) is rolled back to its savepoint and returned as
+`BatchRejected`; the others commit. Any other error fails the whole call. `write_batch(b)` equals
+`write_group([b])[0]`, except that it raises instead of returning `BatchRejected` (Tech Design
+DD-003, Analyze A-04).
 
 ### 5.2 Change feed
 
@@ -737,6 +753,7 @@ Emotion injects runtime `<style>` tags, so `style-src` needs `'unsafe-inline'`. 
 | `[ingest] default_request_rate` / `default_request_burst` | int | `50` / `100` | Per-Project defaults | 007.a |
 | `[ingest] default_span_rate` / `default_span_burst` | int | `20000` / `40000` | Per-Project defaults | 007.a |
 | `[ingest] max_attribute_value_bytes` | size | `256KiB` | Truncation threshold | 041 |
+| `[ingest] max_clock_skew` | duration | `1h` | Spans starting further in the future are rejected (`future_timestamp`) | 010 |
 | `[ingest] finalization_window` | duration | `5m` | `in_progress` → `incomplete` | 032.b |
 | `[ingest] regex_timeout` | duration | `25ms` | Per-rule per-value budget | 039.d |
 | `[ingest] redaction_hook` | `module:function` | unset | Python hook after rules | 039.e |
@@ -871,3 +888,4 @@ When stdout is not a TTY, the key line is replaced by
 | 1.0 | 2026-10-30 | Approved by Ernesto Crespo |
 | 1.1 | 2026-10-30 | Tech Design amendments A3 (Starlette, not FastAPI), A4 (`server.public_url`, `server.ingest_enabled`), A5 (CSP) |
 | 1.2 | 2026-10-31 | Analyze A-06: `get_span_raw` added to `StorageBackend` and `QueryService`, with the `SpanRaw` DTO. Every protocol method is owned by exactly one Tasks entry (P2 detailing). §5: protocol types are `store.records` dataclasses; §6 DTOs are built from them in `query` |
+| 1.3 | 2026-10-31 | Delta `changes/2026-10-p3-ingest-prep/`: `write_group` + `BatchRejected` with a 400 / `INVALID_ARGUMENT` row (A-04); `get_or_create_secret` (A-08); validation rules `future_timestamp`, `older_than_retention` and `ingest.max_clock_skew` (A-17) |

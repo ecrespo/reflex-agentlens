@@ -6,7 +6,7 @@
 |---|---|
 | **Author** | Ernesto Crespo (`ecrespo`) |
 | **Status** | `APPROVED` |
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Date** | 2026-10-31 |
 | **Databases** | SQLite ≥ 3.43 (FTS5, JSON1, window functions, contentless-delete FTS) · PostgreSQL ≥ 15 (CI: 15, 18) |
 | **Related Tech Design** | [`specs/technical/agentlens-architecture.md`](../technical/agentlens-architecture.md) v1.0 |
@@ -123,7 +123,7 @@ Set at creation: `auto_vacuum=INCREMENTAL`, `page_size=8192`.
 
 | Column | Type | Null | Default | Description |
 |---|---|---|---|---|
-| `key` | `TEXT(64)` PK | no | — | One of: `instance_id` (ULID), `created_at_ns`, `bootstrap_done` (`"1"`), `mapping_version_min` (lowest `MAPPING_VERSION` present in `spans`, maintained by rebuild) |
+| `key` | `TEXT(64)` PK | no | — | One of: `instance_id` (ULID), `created_at_ns`, `bootstrap_done` (`"1"`), `mapping_version_min` (lowest `MAPPING_VERSION` present in `spans`, maintained by rebuild), `session_key` (32 random bytes, hex; created on first use with insert-or-ignore so every process sharing the database uses the same key; never logged or shown; Analyze A-08) |
 | `value` | `TEXT` | no | — | |
 
 Alembic's own `alembic_version` table holds the schema revision (REQ-074).
@@ -281,7 +281,7 @@ Orphaned resources (no spans left after purge) are deleted by the purge job.
 | `pk` | `PK` | no | auto | |
 | `id` | `TEXT(26)` | no | ULID | Public ID (routes `/sessions/[session_id]`) |
 | `project_pk` | `BIGINT` FK CASCADE | no | — | |
-| `external_id` | `TEXT(512)` | no | — | Conversation ID as sent (post-redaction; longer values truncated and hashed: `trunc(480) + '…' + hex(blake2b-64)`) |
+| `external_id` | `TEXT(512)` | no | — | Conversation ID as sent. If redaction changes it, the stored value is `<redacted value> + '~' + hex(HMAC-SHA256(app_meta.session_key, raw ID))[:16]`, so unrelated conversations stay apart and the raw ID is never stored (Analyze A-08). Longer values truncated and hashed: `trunc(480) + '…' + hex(blake2b-64)` |
 | `first_ns` / `last_ns` | `BIGINT` | no | — | Min run start / max run end-or-last-span |
 | `run_count` | `INT` | no | 0 | |
 | `input_tokens` / `output_tokens` / `cached_input_tokens` | `BIGINT` | no | 0 | Sum over runs |
@@ -1011,3 +1011,4 @@ integers).
 | 1.0 | 2026-10-30 | Ernesto Crespo | Approved. Notes N1–N4 applied (Tech Design v1.1, Constitution amendments) |
 | 1.0.1 | 2026-10-31 | Ernesto Crespo (with Claude) | From spike S2: percentile rank computed in double precision (parity), one-sort multi-percentile form; search document normalized before indexing (DD-006) |
 | 1.1 | 2026-10-31 | Ernesto Crespo (with Claude) | Analyze A-01: Q6 Run stubs via `ON CONFLICT DO UPDATE … RETURNING` in sorted order (row locks), Session locks before recompute, finalizer `FOR UPDATE SKIP LOCKED`. A-11: pricing seed moved from `0001_initial` to first-run bootstrap. A-09: §2.19 not adopted |
+| 1.2 | 2026-10-31 | Ernesto Crespo (with Claude) | Delta `changes/2026-10-p3-ingest-prep/`: `app_meta.session_key` and the post-redaction Session natural key (A-08) |
