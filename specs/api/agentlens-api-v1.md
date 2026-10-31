@@ -6,7 +6,7 @@
 |---|---|
 | **Author** | Ernesto Crespo (`ecrespo`) |
 | **Status** | `APPROVED` |
-| **API version** | v1.3 (ships with package 0.1.0) |
+| **API version** | v1.3.1 (ships with package 0.1.0) |
 | **Date** | 2026-10-30 |
 | **Related PRD** | [`specs/prd/agentlens-v0.1.md`](../prd/agentlens-v0.1.md) v1.1 |
 | **Governed by** | [`specs/constitution.md`](../constitution.md) v1.0 |
@@ -328,7 +328,7 @@ class StorageBackend(Protocol):
     async def save_redaction_rules(self, project_id: str, rules: RedactionRuleSet) -> None: ...
     async def list_saved_filters(self, project_id: str) -> list[SavedFilter]: ...
     async def save_filter(self, f: NewSavedFilter) -> SavedFilter: ...
-    async def delete_filter(self, filter_id: str) -> None: ...
+    async def delete_filter(self, project_id: str, filter_id: str) -> None: ...
 
     # ── retention ─────────────────────────────────────────────────────────
     async def purge_by_age(self, now_ns: int, batch_traces: int) -> PurgeReport: ...     # [REQ-090]
@@ -575,7 +575,7 @@ it cannot be forged. Cursors are not stable across `sort` changes.
 | `recompute_costs(viewer, project_id, time_range)` | count of LLMCalls updated (SHOULD) | 062 |
 | `get_redaction_rules(viewer, project_id)` / `save_redaction_rules(viewer, project_id, rules)` | `RedactionRuleSet`. Regexes compiled and timed at save | 039, 172.a |
 | `preview_redaction(viewer, rules, sample: str)` | redacted text/JSON. **Nothing persisted, nothing logged** | 172.b |
-| `list_saved_filters` / `save_filter` / `delete_filter` | per Project. Saving is allowed for any viewer with access to the Project (not admin-only) | 102.a |
+| `list_saved_filters` / `save_filter` / `delete_filter` | per Project. Saving is allowed for any viewer with access to the Project (not admin-only). `delete_filter` only matches a filter of the given Project; one of another Project raises `NotFound`, like a missing one | 102.a |
 
 `RedactionRuleSet`:
 
@@ -889,3 +889,4 @@ When stdout is not a TTY, the key line is replaced by
 | 1.1 | 2026-10-30 | Tech Design amendments A3 (Starlette, not FastAPI), A4 (`server.public_url`, `server.ingest_enabled`), A5 (CSP) |
 | 1.2 | 2026-10-31 | Analyze A-06: `get_span_raw` added to `StorageBackend` and `QueryService`, with the `SpanRaw` DTO. Every protocol method is owned by exactly one Tasks entry (P2 detailing). §5: protocol types are `store.records` dataclasses; §6 DTOs are built from them in `query` |
 | 1.3 | 2026-10-31 | Delta `changes/2026-10-p3-ingest-prep/`: `write_group` + `BatchRejected` with a 400 / `INVALID_ARGUMENT` row (A-04); `get_or_create_secret` (A-08); validation rules `future_timestamp`, `older_than_retention` and `ingest.max_clock_skew` (A-17) |
+| 1.3.1 | 2026-10-31 | Delta `changes/2026-10-saved-filter-scope/`: `delete_filter(project_id, filter_id)` is scoped to its Project (IDOR found by a security review) |

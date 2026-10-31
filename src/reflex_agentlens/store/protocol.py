@@ -246,8 +246,8 @@ class StorageBackend(Protocol):
     async def save_filter(self, f: NewSavedFilter) -> SavedFilter:
         """Create or update by ``id``; ``Conflict`` on a duplicate name (REQ-102.a)."""
 
-    async def delete_filter(self, filter_id: str) -> None:
-        """``NotFound`` when the filter does not exist."""
+    async def delete_filter(self, project_id: str, filter_id: str) -> None:
+        """``NotFound`` when the Project has no such filter (another Project's ID included)."""
 
     # ── derived views (P2-08.3) ──────────────────────────────────────────────────────────────
 
