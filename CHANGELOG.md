@@ -12,3 +12,7 @@ All notable changes to this project are documented in this file. The format foll
   Implementation Plan, Tasks) and the spike results in Tech Design §11.
 - Package skeleton, uv workspace (`site/`, `examples/`), and quality gates: ruff, mypy, import
   contracts, pytest with a coverage gate, REQ traceability script, CI and supply-chain workflows.
+- `reflex_agentlens.core`: error hierarchy; OTel trace/span ID and ULID helpers; UTC/nanosecond
+  time helpers; exact nano-USD money and LLM call cost; API key generation, salted hashing and
+  HMAC tokens; configuration models with the TOML → environment → CLI source chain, `*_FILE`
+  secrets and masked rendering; JSON logging with a content guard.

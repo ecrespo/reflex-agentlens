@@ -5,9 +5,9 @@ OpenTelemetry GenAI traces from LangGraph, PydanticAI, OpenAI Agents or any OTLP
 live run timelines, graph replay, tool-call inspection, token and cost analytics — in pure Python,
 on your infra. Embed it as a page in your own app or run it standalone.
 
-> **Status: pre-alpha, not usable yet.** The v0.1 specification is approved and the feasibility
-> spikes are done; implementation of the foundation (phase P1) has started. Nothing is published
-> on PyPI. See [Roadmap](#roadmap).
+> **Status: pre-alpha, not usable yet.** The v0.1 specification is approved, the feasibility
+> spikes are done and the foundation (phase P1: tooling, CI and the `core` package) is built.
+> Storage (P2) is next. Nothing is published on PyPI. See [Roadmap](#roadmap).
 
 ## Why
 
@@ -75,6 +75,7 @@ SQLite or PostgreSQL, and every dashboard aggregate is computed in SQL.
 
 ```
 src/reflex_agentlens/   the package: core, ingest, store, query, components, pages, app, cli
+scripts/                maintenance scripts (REQ traceability check)
 tests/                  unit, golden, property, contract, integration, smoke, … suites
 site/                   project website (uv workspace member, not published)
 examples/               example instrumented agents (uv workspace member, not published)
@@ -88,9 +89,12 @@ Requires Python ≥ 3.11 and [uv](https://docs.astral.sh/uv/). All tooling runs 
 
 ```bash
 uv sync --all-packages        # create .venv with the package, workspace members and dev tools
-uv run pytest                 # tests
+uv run pytest --cov           # tests + coverage gate (ingest + store + query >= 85 %)
 uv run ruff check             # lint
 uv run ruff format --check    # formatting
+uv run mypy                   # strict type checking
+uv run lint-imports           # layer and import contracts
+uv run python scripts/check_req_coverage.py --report-only   # MUST criteria cited by tests
 uv build                      # sdist + wheel
 uv run reflex-agentlens       # CLI (currently prints the version)
 ```
@@ -99,13 +103,18 @@ Branches are cut from `develop`; feature work goes in `feat/<task-id>-<slug>` an
 pull request. Tests cite the requirement they verify (`REQ-NNN.x`). See [CONTRIBUTING.md](CONTRIBUTING.md) for the
 full workflow and [AGENTS.md](AGENTS.md) for coding-agent guidance.
 
+CI (GitHub Actions) runs lint, types, the import contracts and the traceability report; the tests
+on Python 3.11–3.13 with SQLite and against PostgreSQL 15 and 18; and gitleaks plus pip-audit on
+every pull request.
+
 ## Roadmap
 
 | Phase | Content | State |
 |---|---|---|
 | P0 | Spikes: pre-built frontend in the wheel (S1), SQL performance on both backends (S2) | Done — results in Tech Design §11 |
-| P1 | Package skeleton, tooling, CI, `core` | In progress |
-| P2–P4 | Store, ingest, query | Planned |
+| P1 | Package skeleton, quality gates, CI, `core` (errors, IDs, time, money, API keys, config, logging) | Done — in review |
+| P2 | Store: schema and migrations on SQLite and PostgreSQL, write path, contract tests | Next |
+| P3–P4 | Ingest, query | Planned |
 | P5–P7 | CLI, UI pages, embedding and standalone app | Planned |
 | P8–P10 | Benchmarks, Docker, docs, site, release | Planned |
 
