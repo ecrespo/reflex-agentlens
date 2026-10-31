@@ -10,6 +10,9 @@ import reflex_mermaidjs as rmj
 import reflex_silverpoint_react as sp
 from pydantic import BaseModel
 
+from reflex_agentlens._webapp.csp_spike import csp_middleware
+from reflex_agentlens._webapp.ingest_spike import ingest_api, ingest_lifespan
+
 
 class RunRow(BaseModel):
     trace_id: str
@@ -66,5 +69,6 @@ def index() -> rx.Component:
     )
 
 
-app = rx.App()
+app = rx.App(api_transformer=[ingest_api, csp_middleware])
+app.register_lifespan_task(ingest_lifespan)
 app.add_page(index, route="/")

@@ -17,6 +17,8 @@ classifiers = [
     "Topic :: System :: Monitoring",
 ]
 dependencies = [
+    "grpcio>=1.68",
+    "opentelemetry-proto>=1.29",
     "pydantic>=2",
     "reflex>=0.10.1,<0.11",
     "reflex-mermaidjs>=0.2.1,<0.3",

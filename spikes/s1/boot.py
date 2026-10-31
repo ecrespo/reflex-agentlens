@@ -74,6 +74,7 @@ def main() -> None:
     ap.add_argument("--data-dir", type=Path, required=True)
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8000)
+    ap.add_argument("--csp", action="store_true", help="enforce a hash-based CSP (P0-05.1)")
     args = ap.parse_args()
 
     t0 = time.monotonic()
@@ -91,6 +92,15 @@ def main() -> None:
             "REFLEX_TELEMETRY_ENABLED": "false",
         }
     )
+    if args.csp:
+        from reflex_agentlens._webapp.csp_spike import inline_script_hashes, policy
+
+        client = version_dir / ".web" / "build" / "client"
+        hashes = sorted(
+            {h for f in client.glob("*.html") for h in inline_script_hashes(f.read_text())}
+        )
+        os.environ["AGENTLENS_SPIKE_CSP"] = policy(hashes, f"ws://{args.host}:{args.port}")
+        print(f"[boot] CSP with {len(hashes)} inline-script hashes", flush=True)
     print(f"[boot] workdir ready in {time.monotonic() - t0:.2f}s: {version_dir}", flush=True)
 
     from reflex.utils import exec as rx_exec
