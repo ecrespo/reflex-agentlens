@@ -54,8 +54,9 @@ class ContractDB:
             pytest.skip(f"no {self.name} StorageBackend yet (PostgreSQL lands in P2-06.1)")
         return self.backend
 
-    async def make_project(self, slug: str = "default") -> str:
+    async def make_project(self, slug: str | None = None) -> str:
         project_id = new_ulid()
+        slug = slug or f"p-{secrets.token_hex(4)}"
         async with self.engine.begin() as conn:
             await conn.execute(
                 insert(s.projects).values(
