@@ -21,11 +21,12 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from reflex_agentlens.core.errors import StorageUnavailable
+from reflex_agentlens.core.ids import new_ulid
 from reflex_agentlens.core.timeutil import NS_PER_S, now_ns
 from reflex_agentlens.store import migrate as migrations
+from reflex_agentlens.store.changefeed import ChangeFeed
 from reflex_agentlens.store.records import NormalizedBatch, SchemaStatus, WriteResult
 from reflex_agentlens.store.writeapi import BackendMethods
-from reflex_agentlens.store.writepath import write_batch
 
 __all__ = ["CONNECTION_PRAGMAS", "CREATION_PRAGMAS", "SqliteBackend"]
 
@@ -83,6 +84,8 @@ class SqliteBackend(BackendMethods):
         self._write: AsyncEngine | None = None
         self._read: AsyncEngine | None = None
         self._write_lock = asyncio.Lock()
+        self.changes = ChangeFeed()
+        self.origin_id = new_ulid()  # SQLite has a single writing process (DD-007)
 
     @classmethod
     def from_url(cls, url: str, **kwargs: Any) -> SqliteBackend:
@@ -170,16 +173,7 @@ class SqliteBackend(BackendMethods):
 
     async def write_batch(self, batch: NormalizedBatch) -> WriteResult:
         """API §5.1 in one ``BEGIN IMMEDIATE`` transaction on the single write connection."""
-        async with self._write_lock, self.write_engine.begin() as conn:
-            outcome = await conn.run_sync(
-                write_batch,
-                batch,
-                now_ns=self._clock(),
-                window_ns=self.finalization_window_ns,
-            )
-        return WriteResult(
-            inserted=outcome.inserted,
-            duplicates=outcome.duplicates,
-            affected_runs=outcome.affected_runs,
-            committed_at_ns=self._clock(),
-        )
+        return await self._write_and_publish(batch)
+
+    async def start_change_listener(self) -> None:
+        """Nothing to listen to: every SQLite write happens in this process (DD-007)."""

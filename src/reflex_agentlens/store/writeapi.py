@@ -1,7 +1,13 @@
-"""Settings and metric writes shared by both SQL backends (plan tasks P2-07.4, P2-08.1).
+"""Writes shared by both SQL backends (plan tasks P2-07.4 … P2-10.1).
 
 Backends provide ``_on_writer`` (one transaction on the write path: SQLite's single
-``BEGIN IMMEDIATE`` connection under its lock, a pooled transaction on PostgreSQL) and ``_clock``.
+``BEGIN IMMEDIATE`` connection under its lock, a pooled transaction on PostgreSQL), ``_clock``,
+``changes`` (the in-process :class:`ChangeFeed`) and ``origin_id``.
+
+Writes that change what the UI shows go through :meth:`BackendMethods._commit_and_publish`: the
+events are computed inside the transaction (PostgreSQL also sends them with ``pg_notify`` there,
+so they are delivered exactly on commit) and published locally **after** the commit returns; a
+rolled-back transaction publishes nothing (REQ-140.a, API §5.1 step 6).
 """
 
 from __future__ import annotations
@@ -12,18 +18,23 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Any, TypeVar
 
+from sqlalchemy import Connection
 from sqlalchemy.exc import IntegrityError
 
 from reflex_agentlens.store import admin, maintenance, metrics, retention, settings
+from reflex_agentlens.store.changefeed import ChangeFeed, events_for
 from reflex_agentlens.store.readapi import ReadMethods
 from reflex_agentlens.store.records import (
     ApiKeyRecord,
+    ChangeEvent,
+    ChangeKind,
     IngestSettings,
     JobName,
     MetricPoint,
     NewApiKeyRecord,
     NewProject,
     NewSavedFilter,
+    NormalizedBatch,
     PricingEntry,
     PricingSource,
     PricingVersion,
@@ -42,7 +53,9 @@ from reflex_agentlens.store.records import (
     StorageUsage,
     TimeRange,
     UnpricedModel,
+    WriteResult,
 )
+from reflex_agentlens.store.writepath import WriteOutcome, write_batch
 
 __all__ = ["BackendMethods"]
 
@@ -54,9 +67,67 @@ class BackendMethods(ReadMethods):
 
     _clock: Callable[[], int]
     finalization_window_ns: int
+    changes: ChangeFeed
+    origin_id: str
 
     async def _on_writer(self, fn: Callable[..., _R], *args: Any) -> _R:  # pragma: no cover
         raise NotImplementedError
+
+    # ── change feed (P2-10.1) ────────────────────────────────────────────────────────────────
+
+    def _notify_in_tx(self, conn: Connection, events: Sequence[ChangeEvent]) -> None:
+        """Cross-process delivery inside the commit transaction; PostgreSQL overrides it."""
+
+    async def _commit_and_publish(
+        self,
+        events: Callable[[_R, int], list[ChangeEvent]],
+        fn: Callable[..., _R],
+        *args: Any,
+    ) -> _R:
+        """Run ``fn`` in one writer transaction, then publish ``events(result, committed_at)``."""
+        out: list[ChangeEvent] = []
+
+        def tx(conn: Connection, *a: Any) -> _R:
+            result = fn(conn, *a)
+            out.extend(events(result, self._clock()))
+            if out:
+                self._notify_in_tx(conn, out)
+            return result
+
+        result = await self._on_writer(tx, *args)
+        for event in out:  # after the commit; nothing for a rolled-back transaction
+            self.changes.publish_nowait(event)
+        return result
+
+    async def _settings_changed(
+        self, fn: Callable[..., _R], project: Callable[[_R], str] | str, *args: Any
+    ) -> _R:
+        def events(result: _R, at: int) -> list[ChangeEvent]:
+            pid = project if isinstance(project, str) else project(result)
+            return [ChangeEvent.build("settings_changed", pid, [], at)]
+
+        return await self._commit_and_publish(events, fn, *args)
+
+    @staticmethod
+    def _keyed(
+        kind: ChangeKind, keys: Callable[[_R], Sequence[RunKey]]
+    ) -> Callable[[_R, int], list[ChangeEvent]]:
+        return lambda result, at: events_for(kind, keys(result), at)
+
+    # ── ingest path (P2-05.2, P2-06.1, P2-10.1) ──────────────────────────────────────────────
+
+    async def _write_and_publish(self, batch: NormalizedBatch) -> WriteResult:
+        """API §5.1 in one writer transaction, then one ``spans_committed`` event per Project."""
+        outcome: WriteOutcome = await self._commit_and_publish(
+            self._keyed("spans_committed", lambda o: o.affected_runs),
+            _write_batch_tx, batch, self._clock(), self.finalization_window_ns,
+        )  # fmt: skip
+        return WriteResult(
+            inserted=outcome.inserted,
+            duplicates=outcome.duplicates,
+            affected_runs=outcome.affected_runs,
+            committed_at_ns=self._clock(),
+        )
 
     # ── metric points (P2-07.4) ──────────────────────────────────────────────────────────────
 
@@ -74,10 +145,12 @@ class BackendMethods(ReadMethods):
         return await self._on_writer(admin.create_project, new, self._clock())
 
     async def update_project(self, project_id: str, patch: ProjectPatch) -> Project:
-        return await self._on_writer(admin.update_project, project_id, patch, self._clock())
+        return await self._settings_changed(
+            admin.update_project, project_id, project_id, patch, self._clock()
+        )
 
     async def delete_project(self, project_id: str) -> None:
-        await self._on_writer(admin.delete_project, project_id)
+        await self._settings_changed(admin.delete_project, project_id, project_id)
 
     async def create_api_key(self, rec: NewApiKeyRecord) -> ApiKeyRecord:
         return await self._on_writer(admin.create_api_key, rec)
@@ -92,7 +165,8 @@ class BackendMethods(ReadMethods):
         await self._on_writer(admin.touch_api_key, key_id, at_ns)
 
     async def revoke_api_key(self, key_id: str, at_ns: int) -> None:
-        await self._on_writer(admin.revoke_api_key, key_id, at_ns)
+        """REQ-006.c: ``settings_changed`` tells every process to drop cached key checks."""
+        await self._settings_changed(admin.revoke_api_key, lambda pid: pid, key_id, at_ns)
 
     # ── pricing, redaction, ingest settings, saved filters (P2-08.2) ─────────────────────────
 
@@ -120,7 +194,9 @@ class BackendMethods(ReadMethods):
         return await self._on_read_pool(settings.list_unpriced_models, scope)
 
     async def save_redaction_rules(self, project_id: str, rules: RedactionRuleSet) -> None:
-        await self._on_writer(settings.save_redaction_rules, project_id, rules, self._clock())
+        await self._settings_changed(
+            settings.save_redaction_rules, project_id, project_id, rules, self._clock()
+        )
 
     async def get_ingest_settings(self, project_id: str) -> IngestSettings:
         return await self._on_read_pool(settings.get_ingest_settings, project_id)
@@ -138,9 +214,10 @@ class BackendMethods(ReadMethods):
 
     async def finalize_stale_runs(self, older_than_ns: int, limit: int) -> list[RunKey]:
         """Q12 (REQ-032.b): one transaction; Runs locked by another writer are skipped."""
-        return await self._on_writer(
-            maintenance.finalize_stale_runs, older_than_ns, limit, self._clock()
-        )
+        return await self._commit_and_publish(
+            self._keyed("runs_finalized", lambda keys: keys),
+            maintenance.finalize_stale_runs, older_than_ns, limit, self._clock(),
+        )  # fmt: skip
 
     async def rebuild(
         self,
@@ -215,7 +292,9 @@ class BackendMethods(ReadMethods):
 
         async def run(counts: dict[str, int]) -> None:
             while True:
-                n, freed = await self._on_writer(retention.age_batch, now_ns, batch_traces)
+                n, freed, _ = await self._commit_and_publish(
+                    _purged, retention.age_batch, now_ns, batch_traces
+                )
                 counts["age"] += n
                 counts["bytes"] += freed
                 if n < batch_traces:
@@ -234,8 +313,8 @@ class BackendMethods(ReadMethods):
             if usage <= limit_bytes:
                 return
             while usage > target:
-                n, freed = await self._on_writer(
-                    retention.size_batch, usage - target, batch_traces, self._clock()
+                n, freed, _ = await self._commit_and_publish(
+                    _purged, retention.size_batch, usage - target, batch_traces, self._clock()
                 )
                 if n == 0:
                     return
@@ -268,3 +347,13 @@ class BackendMethods(ReadMethods):
             return
         async with lock:
             yield True
+
+
+def _write_batch_tx(
+    conn: Connection, batch: NormalizedBatch, now_ns: int, window_ns: int
+) -> WriteOutcome:
+    return write_batch(conn, batch, now_ns=now_ns, window_ns=window_ns)
+
+
+def _purged(result: retention.PurgeBatch, at: int) -> list[ChangeEvent]:
+    return events_for("purged", result[2], at)
