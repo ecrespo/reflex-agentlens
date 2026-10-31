@@ -1,0 +1,116 @@
+{
+  "sqlite": {
+    "Q8_kpis": {
+      "rows": 1,
+      "p50_ms": 100.2,
+      "p95_ms": 104.4
+    },
+    "Q10a_runs_by_status_day": {
+      "rows": 60,
+      "p50_ms": 27.6,
+      "p95_ms": 29.0
+    },
+    "Q10b_tokens_cost_by_model": {
+      "rows": 10,
+      "p50_ms": 335.0,
+      "p95_ms": 429.4
+    },
+    "Q10b_cost_by_model_day": {
+      "rows": 300,
+      "p50_ms": 210.0,
+      "p95_ms": 252.2
+    },
+    "Q10c_latency_percentiles": {
+      "rows": 51,
+      "p50_ms": 8200.4,
+      "p95_ms": 9069.6
+    },
+    "Q10c_one_pass": {
+      "rows": 17,
+      "p50_ms": 2339.2,
+      "p95_ms": 2519.0
+    },
+    "Q10d_top_tools": {
+      "rows": 10,
+      "p50_ms": 59.3,
+      "p95_ms": 69.7
+    },
+    "Q10e_by_source": {
+      "rows": 5,
+      "p50_ms": 30.2,
+      "p95_ms": 34.5
+    },
+    "Q10f_approvals": {
+      "rows": 4,
+      "p50_ms": 14.6,
+      "p95_ms": 15.7
+    },
+    "_full_set": {
+      "p50_ms": 3037.8,
+      "p95_ms": 3327.4
+    }
+  },
+  "postgresql": {
+    "Q8_kpis": {
+      "rows": 1,
+      "p50_ms": 47.5,
+      "p95_ms": 83.9
+    },
+    "Q10a_runs_by_status_day": {
+      "rows": 60,
+      "p50_ms": 7.4,
+      "p95_ms": 11.0
+    },
+    "Q10b_tokens_cost_by_model": {
+      "rows": 10,
+      "p50_ms": 151.2,
+      "p95_ms": 220.5
+    },
+    "Q10b_cost_by_model_day": {
+      "rows": 300,
+      "p50_ms": 116.3,
+      "p95_ms": 200.2
+    },
+    "Q10c_latency_percentiles": {
+      "rows": 51,
+      "p50_ms": 474.6,
+      "p95_ms": 506.6
+    },
+    "Q10c_one_pass": {
+      "rows": 17,
+      "p50_ms": 338.3,
+      "p95_ms": 360.3
+    },
+    "Q10d_top_tools": {
+      "rows": 10,
+      "p50_ms": 23.4,
+      "p95_ms": 32.0
+    },
+    "Q10e_by_source": {
+      "rows": 5,
+      "p50_ms": 21.6,
+      "p95_ms": 23.4
+    },
+    "Q10f_approvals": {
+      "rows": 4,
+      "p50_ms": 2.7,
+      "p95_ms": 3.1
+    },
+    "_full_set": {
+      "p50_ms": 708.1,
+      "p95_ms": 723.7
+    }
+  },
+  "parity": {
+    "Q8_kpis": true,
+    "Q10a_runs_by_status_day": true,
+    "Q10b_tokens_cost_by_model": true,
+    "Q10b_cost_by_model_day": true,
+    "Q10c_latency_percentiles": true,
+    "Q10c_one_pass": true,
+    "Q10d_top_tools": true,
+    "Q10e_by_source": true,
+    "Q10f_approvals": true
+  },
+  "parity_diffs": {}
+}

@@ -1,0 +1,105 @@
+{
+  "sqlite": {
+    "Q8_kpis": {
+      "rows": 1,
+      "p50_ms": 91.7,
+      "p95_ms": 127.3
+    },
+    "Q10a_runs_by_status_day": {
+      "rows": 60,
+      "p50_ms": 23.9,
+      "p95_ms": 28.0
+    },
+    "Q10b_tokens_cost_by_model": {
+      "rows": 10,
+      "p50_ms": 307.2,
+      "p95_ms": 341.9
+    },
+    "Q10b_cost_by_model_day": {
+      "rows": 300,
+      "p50_ms": 223.0,
+      "p95_ms": 311.2
+    },
+    "Q10c_latency_percentiles": {
+      "rows": 51,
+      "p50_ms": 7547.3,
+      "p95_ms": 9472.6
+    },
+    "Q10d_top_tools": {
+      "rows": 10,
+      "p50_ms": 71.2,
+      "p95_ms": 88.2
+    },
+    "Q10e_by_source": {
+      "rows": 5,
+      "p50_ms": 29.9,
+      "p95_ms": 34.2
+    },
+    "Q10f_approvals": {
+      "rows": 4,
+      "p50_ms": 14.2,
+      "p95_ms": 14.9
+    },
+    "_full_set": {
+      "p50_ms": 8214.4,
+      "p95_ms": 10782.1
+    }
+  },
+  "postgresql": {
+    "Q8_kpis": {
+      "rows": 1,
+      "p50_ms": 52.9,
+      "p95_ms": 76.1
+    },
+    "Q10a_runs_by_status_day": {
+      "rows": 60,
+      "p50_ms": 14.0,
+      "p95_ms": 14.9
+    },
+    "Q10b_tokens_cost_by_model": {
+      "rows": 10,
+      "p50_ms": 129.1,
+      "p95_ms": 150.9
+    },
+    "Q10b_cost_by_model_day": {
+      "rows": 300,
+      "p50_ms": 122.0,
+      "p95_ms": 170.0
+    },
+    "Q10c_latency_percentiles": {
+      "rows": 51,
+      "p50_ms": 516.2,
+      "p95_ms": 1191.8
+    },
+    "Q10d_top_tools": {
+      "rows": 10,
+      "p50_ms": 22.5,
+      "p95_ms": 30.4
+    },
+    "Q10e_by_source": {
+      "rows": 5,
+      "p50_ms": 21.3,
+      "p95_ms": 23.8
+    },
+    "Q10f_approvals": {
+      "rows": 4,
+      "p50_ms": 2.7,
+      "p95_ms": 3.2
+    },
+    "_full_set": {
+      "p50_ms": 873.0,
+      "p95_ms": 1017.5
+    }
+  },
+  "parity": {
+    "Q8_kpis": true,
+    "Q10a_runs_by_status_day": true,
+    "Q10b_tokens_cost_by_model": true,
+    "Q10b_cost_by_model_day": true,
+    "Q10c_latency_percentiles": true,
+    "Q10d_top_tools": true,
+    "Q10e_by_source": true,
+    "Q10f_approvals": true
+  },
+  "parity_diffs": {}
+}

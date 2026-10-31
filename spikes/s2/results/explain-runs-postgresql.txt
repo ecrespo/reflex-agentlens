@@ -1,0 +1,187 @@
+== Q1_default_page
+Limit  (cost=0.28..11.34 rows=51 width=302) (actual time=0.021..0.061 rows=51.00 loops=1)
+  Buffers: shared hit=52
+  ->  Index Scan using ix_runs_project_start on runs r  (cost=0.28..1014.39 rows=4677 width=302) (actual time=0.020..0.055 rows=51.00 loops=1)
+        Index Cond: ((project_pk = '1'::bigint) AND (start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint))
+        Index Searches: 1
+        Buffers: shared hit=52
+Planning Time: 0.171 ms
+Execution Time: 0.093 ms
+
+== Q1_keyset_page2
+Limit  (cost=0.28..17.69 rows=51 width=302) (actual time=0.088..0.117 rows=51.00 loops=1)
+  Buffers: shared hit=71
+  ->  Index Scan using ix_runs_project_start on runs r  (cost=0.28..785.81 rows=2301 width=302) (actual time=0.087..0.111 rows=51.00 loops=1)
+        Index Cond: ((project_pk = '1'::bigint) AND (start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint) AND (ROW(start_ns, pk) < ROW('1792108800000000000'::bigint, '1000000000000'::bigint)))
+        Index Searches: 1
+        Buffers: shared hit=71
+Planning Time: 0.154 ms
+Execution Time: 0.143 ms
+
+== Q2_model
+Limit  (cost=0.70..140.92 rows=51 width=302) (actual time=0.038..0.557 rows=51.00 loops=1)
+  Buffers: shared hit=750
+  ->  Nested Loop Semi Join  (cost=0.70..4127.59 rows=1501 width=302) (actual time=0.037..0.551 rows=51.00 loops=1)
+        Buffers: shared hit=750
+        ->  Index Scan using ix_runs_project_start on runs r  (cost=0.28..1014.39 rows=4677 width=302) (actual time=0.016..0.136 rows=188.00 loops=1)
+              Index Cond: ((project_pk = '1'::bigint) AND (start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint))
+              Index Searches: 1
+              Buffers: shared hit=185
+        ->  Index Only Scan using ix_llm_project_model_run on llm_calls l  (cost=0.41..0.66 rows=1 width=16) (actual time=0.002..0.002 rows=0.27 loops=188)
+              Index Cond: ((project_pk = '1'::bigint) AND (model = 'mistral-large'::text) AND (run_pk = r.pk))
+              Heap Fetches: 0
+              Index Searches: 188
+              Buffers: shared hit=565
+Planning:
+  Buffers: shared hit=24
+Planning Time: 0.429 ms
+Execution Time: 0.601 ms
+
+== Q2_tool
+Limit  (cost=440.40..440.53 rows=51 width=302) (actual time=1.236..1.241 rows=51.00 loops=1)
+  Buffers: shared hit=316
+  ->  Sort  (cost=440.40..441.16 rows=302 width=302) (actual time=1.235..1.237 rows=51.00 loops=1)
+        Sort Key: r.start_ns DESC, r.pk DESC
+        Sort Method: top-N heapsort  Memory: 69kB
+        Buffers: shared hit=316
+        ->  Hash Join  (cost=21.72..430.33 rows=302 width=302) (actual time=0.150..1.132 rows=289.00 loops=1)
+              Hash Cond: (r.pk = t.run_pk)
+              Buffers: shared hit=316
+              ->  Seq Scan on runs r  (cost=0.00..392.97 rows=4677 width=302) (actual time=0.006..0.717 rows=4674.00 loops=1)
+                    Filter: ((start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint) AND (project_pk = '1'::bigint))
+                    Rows Removed by Filter: 10
+                    Buffers: shared hit=311
+              ->  Hash  (cost=18.03..18.03 rows=295 width=16) (actual time=0.134..0.134 rows=290.00 loops=1)
+                    Buckets: 1024  Batches: 1  Memory Usage: 22kB
+                    Buffers: shared hit=5
+                    ->  HashAggregate  (cost=15.08..18.03 rows=295 width=16) (actual time=0.088..0.108 rows=290.00 loops=1)
+                          Group Key: t.run_pk
+                          Batches: 1  Memory Usage: 56kB
+                          Buffers: shared hit=5
+                          ->  Index Only Scan Backward using ix_tool_project_name_run on tool_calls t  (cost=0.29..14.33 rows=302 width=16) (actual time=0.020..0.050 rows=302.00 loops=1)
+                                Index Cond: ((project_pk = '1'::bigint) AND (tool_name = 'geo-code'::text))
+                                Heap Fetches: 0
+                                Index Searches: 1
+                                Buffers: shared hit=5
+Planning:
+  Buffers: shared hit=24
+Planning Time: 0.338 ms
+Execution Time: 1.279 ms
+
+== Q2_status
+Limit  (cost=1.87..84.31 rows=51 width=302) (actual time=0.025..0.037 rows=51.00 loops=1)
+  Buffers: shared hit=54
+  ->  Incremental Sort  (cost=1.87..236.25 rows=145 width=302) (actual time=0.025..0.033 rows=51.00 loops=1)
+        Sort Key: start_ns DESC, pk DESC
+        Presorted Key: start_ns
+        Full-sort Groups: 2  Sort Method: quicksort  Average Memory: 41kB  Peak Memory: 41kB
+        Buffers: shared hit=54
+        ->  Index Scan using ix_runs_project_status_start on runs r  (cost=0.28..229.72 rows=145 width=302) (actual time=0.012..0.025 rows=52.00 loops=1)
+              Index Cond: ((project_pk = '1'::bigint) AND ((status)::text = 'error'::text) AND (start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint))
+              Index Searches: 1
+              Buffers: shared hit=54
+Planning Time: 0.062 ms
+Execution Time: 0.050 ms
+
+== Q2_duration
+Limit  (cost=417.16..417.24 rows=31 width=302) (actual time=0.301..0.304 rows=30.00 loops=1)
+  Buffers: shared hit=311
+  ->  Sort  (cost=417.16..417.24 rows=31 width=302) (actual time=0.301..0.302 rows=30.00 loops=1)
+        Sort Key: start_ns DESC, pk DESC
+        Sort Method: quicksort  Memory: 40kB
+        Buffers: shared hit=311
+        ->  Seq Scan on runs r  (cost=0.00..416.39 rows=31 width=302) (actual time=0.013..0.296 rows=30.00 loops=1)
+              Filter: ((start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint) AND (duration_ns >= '60000000000'::bigint) AND (duration_ns <= '90000000000'::bigint) AND (project_pk = '1'::bigint))
+              Rows Removed by Filter: 4654
+              Buffers: shared hit=311
+Planning Time: 0.044 ms
+Execution Time: 0.311 ms
+
+== Q3_root_attr_eq
+Limit  (cost=0.57..7952.65 rows=51 width=302) (actual time=0.051..0.651 rows=51.00 loops=1)
+  Buffers: shared hit=547
+  ->  Nested Loop  (cost=0.57..18087.65 rows=116 width=302) (actual time=0.050..0.645 rows=51.00 loops=1)
+        Buffers: shared hit=547
+        ->  Index Scan using ix_runs_project_start on runs r  (cost=0.28..1014.39 rows=4677 width=302) (actual time=0.036..0.152 rows=137.00 loops=1)
+              Index Cond: ((project_pk = '1'::bigint) AND (start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint))
+              Index Searches: 1
+              Buffers: shared hit=136
+        ->  Index Scan using spans_pkey on spans s  (cost=0.29..3.65 rows=1 width=8) (actual time=0.003..0.003 rows=0.37 loops=137)
+              Index Cond: (pk = r.root_span_pk)
+              Filter: (attributes @> jsonb_build_object('user.tier'::text, 'enterprise'::text))
+              Rows Removed by Filter: 1
+              Index Searches: 137
+              Buffers: shared hit=411
+Planning:
+  Buffers: shared hit=6
+Planning Time: 0.419 ms
+Execution Time: 0.680 ms
+
+== Q3_fts_two_terms
+Limit  (cost=0.57..1418.47 rows=51 width=302) (actual time=0.036..1.621 rows=51.00 loops=1)
+  Buffers: shared hit=927
+  ->  Nested Loop Semi Join  (cost=0.57..16598.32 rows=597 width=302) (actual time=0.035..1.614 rows=51.00 loops=1)
+        Buffers: shared hit=927
+        ->  Index Scan using ix_runs_project_start on runs r  (cost=0.28..1014.39 rows=4677 width=302) (actual time=0.018..0.160 rows=178.00 loops=1)
+              Index Cond: ((project_pk = '1'::bigint) AND (start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint))
+              Index Searches: 1
+              Buffers: shared hit=176
+        ->  Index Scan using ix_search_run on span_search q  (cost=0.29..3.33 rows=1 width=8) (actual time=0.008..0.008 rows=0.29 loops=178)
+              Index Cond: (run_pk = r.pk)
+              Filter: (tsv @@ '''upstream'' & ''timeout'''::tsquery)
+              Rows Removed by Filter: 18
+              Index Searches: 178
+              Buffers: shared hit=751
+Planning:
+  Buffers: shared hit=25
+Planning Time: 0.431 ms
+Execution Time: 1.657 ms
+
+== Q5_trace_1000
+Sort  (cost=950.39..950.44 rows=21 width=174) (actual time=7.353..7.416 rows=1009.00 loops=1)
+  Sort Key: s.start_ns, s.pk
+  Sort Method: quicksort  Memory: 154kB
+  Buffers: shared hit=8187
+  InitPlan 1
+    ->  Limit  (cost=381.26..381.26 rows=1 width=12) (actual time=2.019..2.020 rows=1.00 loops=1)
+          Buffers: shared hit=311
+          ->  Sort  (cost=381.26..392.97 rows=4684 width=12) (actual time=2.018..2.018 rows=1.00 loops=1)
+                Sort Key: runs.span_count DESC
+                Sort Method: top-N heapsort  Memory: 25kB
+                Buffers: shared hit=311
+                ->  Seq Scan on runs  (cost=0.00..357.84 rows=4684 width=12) (actual time=0.010..1.581 rows=4684.00 loops=1)
+                      Buffers: shared hit=311
+  ->  Nested Loop Left Join  (cost=45.76..568.66 rows=21 width=174) (actual time=2.979..6.819 rows=1009.00 loops=1)
+        Buffers: shared hit=8187
+        ->  Nested Loop Left Join  (cost=45.47..402.26 rows=21 width=167) (actual time=2.974..5.719 rows=1009.00 loops=1)
+              Buffers: shared hit=5968
+              ->  Nested Loop Left Join  (cost=45.18..239.85 rows=21 width=154) (actual time=2.966..4.603 rows=1009.00 loops=1)
+                    Buffers: shared hit=3750
+                    ->  Hash Right Join  (cost=44.89..69.39 rows=21 width=117) (actual time=2.959..3.282 rows=1009.00 loops=1)
+                          Hash Cond: (a.span_pk = s.pk)
+                          Buffers: shared hit=1332
+                          ->  Seq Scan on approvals a  (cost=0.00..22.11 rows=911 width=16) (actual time=0.005..0.076 rows=911.00 loops=1)
+                                Buffers: shared hit=13
+                          ->  Hash  (cost=44.63..44.63 rows=21 width=109) (actual time=2.945..2.946 rows=1009.00 loops=1)
+                                Buckets: 1024  Batches: 1  Memory Usage: 132kB
+                                Buffers: shared hit=1319
+                                ->  Index Scan using uq_spans_run_span on spans s  (cost=0.42..44.63 rows=21 width=109) (actual time=2.039..2.660 rows=1009.00 loops=1)
+                                      Index Cond: (run_pk = (InitPlan 1).col1)
+                                      Index Searches: 1
+                                      Buffers: shared hit=1319
+                    ->  Index Scan using llm_calls_pkey on llm_calls l  (cost=0.29..8.12 rows=1 width=45) (actual time=0.001..0.001 rows=0.40 loops=1009)
+                          Index Cond: (span_pk = s.pk)
+                          Index Searches: 1009
+                          Buffers: shared hit=2418
+              ->  Index Scan using tool_calls_pkey on tool_calls t  (cost=0.29..7.73 rows=1 width=21) (actual time=0.001..0.001 rows=0.20 loops=1009)
+                    Index Cond: (span_pk = s.pk)
+                    Index Searches: 1009
+                    Buffers: shared hit=2218
+        ->  Index Scan using graph_nodes_pkey on graph_nodes g  (cost=0.29..7.92 rows=1 width=15) (actual time=0.001..0.001 rows=0.20 loops=1009)
+              Index Cond: (span_pk = s.pk)
+              Index Searches: 1009
+              Buffers: shared hit=2219
+Planning:
+  Buffers: shared hit=48
+Planning Time: 0.759 ms
+Execution Time: 7.520 ms

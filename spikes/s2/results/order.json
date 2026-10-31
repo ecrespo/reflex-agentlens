@@ -1,0 +1,98 @@
+{
+  "spans": 10023,
+  "runs": 470,
+  "sqlite": {
+    "identical": true,
+    "generation": {
+      "runs": [
+        "cd81043fd0a6fb595335babb9aa99573",
+        470
+      ],
+      "sessions": [
+        "0d859b034b8641f29128e23bbbf29b8a",
+        80
+      ],
+      "groups": 20
+    },
+    "reversed": {
+      "runs": [
+        "cd81043fd0a6fb595335babb9aa99573",
+        470
+      ],
+      "sessions": [
+        "0d859b034b8641f29128e23bbbf29b8a",
+        80
+      ],
+      "groups": 20
+    },
+    "shuffled": {
+      "runs": [
+        "cd81043fd0a6fb595335babb9aa99573",
+        470
+      ],
+      "sessions": [
+        "0d859b034b8641f29128e23bbbf29b8a",
+        80
+      ],
+      "groups": 10
+    },
+    "shuffled+dups": {
+      "runs": [
+        "cd81043fd0a6fb595335babb9aa99573",
+        470
+      ],
+      "sessions": [
+        "0d859b034b8641f29128e23bbbf29b8a",
+        80
+      ],
+      "groups": 12
+    }
+  },
+  "postgresql": {
+    "identical": true,
+    "generation": {
+      "runs": [
+        "cd81043fd0a6fb595335babb9aa99573",
+        470
+      ],
+      "sessions": [
+        "0d859b034b8641f29128e23bbbf29b8a",
+        80
+      ],
+      "groups": 20
+    },
+    "reversed": {
+      "runs": [
+        "cd81043fd0a6fb595335babb9aa99573",
+        470
+      ],
+      "sessions": [
+        "0d859b034b8641f29128e23bbbf29b8a",
+        80
+      ],
+      "groups": 20
+    },
+    "shuffled": {
+      "runs": [
+        "cd81043fd0a6fb595335babb9aa99573",
+        470
+      ],
+      "sessions": [
+        "0d859b034b8641f29128e23bbbf29b8a",
+        80
+      ],
+      "groups": 10
+    },
+    "shuffled+dups": {
+      "runs": [
+        "cd81043fd0a6fb595335babb9aa99573",
+        470
+      ],
+      "sessions": [
+        "0d859b034b8641f29128e23bbbf29b8a",
+        80
+      ],
+      "groups": 12
+    }
+  }
+}

@@ -1,0 +1,662 @@
+{
+  "tokenization": {
+    "execute_tool search_web best pizza near me": {
+      "fts5": [
+        "execute",
+        "tool",
+        "search",
+        "web",
+        "best",
+        "pizza",
+        "near",
+        "me"
+      ],
+      "pg": "'best':5 'execute':1 'me':8 'near':7 'pizza':6 'search':3 'tool':2 'web':4"
+    },
+    "execute_tool db.query select * from orders": {
+      "fts5": [
+        "execute",
+        "tool",
+        "db",
+        "query",
+        "select",
+        "from",
+        "orders"
+      ],
+      "pg": "'db.query':3 'execute':1 'from':5 'orders':6 'select':4 'tool':2"
+    },
+    "chat gpt-4o-mini summarize the invoice": {
+      "fts5": [
+        "chat",
+        "gpt",
+        "4o",
+        "mini",
+        "summarize",
+        "the",
+        "invoice"
+      ],
+      "pg": "'4o':4 'chat':1 'gpt':3 'gpt-4o-mini':2 'invoice':8 'mini':5 'summarize':6 'the':7"
+    },
+    "execute_tool RefundTool refund order 991": {
+      "fts5": [
+        "execute",
+        "tool",
+        "refundtool",
+        "refund",
+        "order",
+        "991"
+      ],
+      "pg": "'991':6 'execute':1 'order':5 'refund':4 'refundtool':3 'tool':2"
+    },
+    "web search for café opening hours": {
+      "fts5": [
+        "web",
+        "search",
+        "for",
+        "cafe",
+        "opening",
+        "hours"
+      ],
+      "pg": "'café':4 'for':3 'hours':6 'opening':5 'search':2 'web':1"
+    },
+    "query the db for orders": {
+      "fts5": [
+        "query",
+        "the",
+        "db",
+        "for",
+        "orders"
+      ],
+      "pg": "'db':3 'for':4 'orders':5 'query':1 'the':2"
+    },
+    "chat gpt-4o hello": {
+      "fts5": [
+        "chat",
+        "gpt",
+        "4o",
+        "hello"
+      ],
+      "pg": "'4o':4 'chat':1 'gpt':3 'gpt-4o':2 'hello':5"
+    },
+    "kb-lookup policy warranty; sql.execute failed": {
+      "fts5": [
+        "kb",
+        "lookup",
+        "policy",
+        "warranty",
+        "sql",
+        "execute",
+        "failed"
+      ],
+      "pg": "'failed':7 'kb':2 'kb-lookup':1 'lookup':3 'policy':4 'sql.execute':6 'warranty':5"
+    },
+    "Résumé naïve CAFÉ": {
+      "fts5": [
+        "resume",
+        "naive",
+        "cafe"
+      ],
+      "pg": "'café':3 'naïve':2 'résumé':1"
+    },
+    "search web results and refundtool docs": {
+      "fts5": [
+        "search",
+        "web",
+        "results",
+        "and",
+        "refundtool",
+        "docs"
+      ],
+      "pg": "'and':4 'docs':6 'refundtool':5 'results':3 'search':1 'web':2"
+    }
+  },
+  "dd006": {
+    "all_same": false,
+    "terms": {
+      "search_web": {
+        "tokens": [
+          "search_web"
+        ],
+        "fts5": [
+          1,
+          10
+        ],
+        "pg": [
+          1,
+          10
+        ],
+        "pg_tsquery": "'search' <-> 'web'",
+        "same": true
+      },
+      "search": {
+        "tokens": [
+          "search"
+        ],
+        "fts5": [
+          1,
+          5,
+          10
+        ],
+        "pg": [
+          1,
+          5,
+          10
+        ],
+        "pg_tsquery": "'search'",
+        "same": true
+      },
+      "web": {
+        "tokens": [
+          "web"
+        ],
+        "fts5": [
+          1,
+          5,
+          10
+        ],
+        "pg": [
+          1,
+          5,
+          10
+        ],
+        "pg_tsquery": "'web'",
+        "same": true
+      },
+      "db.query": {
+        "tokens": [
+          "db",
+          "query"
+        ],
+        "fts5": [
+          2,
+          6
+        ],
+        "pg": [
+          6
+        ],
+        "pg_tsquery": "'db' & 'query'",
+        "same": false
+      },
+      "db": {
+        "tokens": [
+          "db"
+        ],
+        "fts5": [
+          2,
+          6
+        ],
+        "pg": [
+          6
+        ],
+        "pg_tsquery": "'db'",
+        "same": false
+      },
+      "query": {
+        "tokens": [
+          "query"
+        ],
+        "fts5": [
+          2,
+          6
+        ],
+        "pg": [
+          6
+        ],
+        "pg_tsquery": "'query'",
+        "same": false
+      },
+      "gpt-4o-mini": {
+        "tokens": [
+          "gpt",
+          "4o",
+          "mini"
+        ],
+        "fts5": [
+          3
+        ],
+        "pg": [
+          3
+        ],
+        "pg_tsquery": "'gpt' & '4o' & 'mini'",
+        "same": true
+      },
+      "gpt-4o": {
+        "tokens": [
+          "gpt",
+          "4o"
+        ],
+        "fts5": [
+          3,
+          7
+        ],
+        "pg": [
+          3,
+          7
+        ],
+        "pg_tsquery": "'gpt' & '4o'",
+        "same": true
+      },
+      "4o": {
+        "tokens": [
+          "4o"
+        ],
+        "fts5": [
+          3,
+          7
+        ],
+        "pg": [
+          3,
+          7
+        ],
+        "pg_tsquery": "'4o'",
+        "same": true
+      },
+      "mini": {
+        "tokens": [
+          "mini"
+        ],
+        "fts5": [
+          3
+        ],
+        "pg": [
+          3
+        ],
+        "pg_tsquery": "'mini'",
+        "same": true
+      },
+      "RefundTool": {
+        "tokens": [
+          "refundtool"
+        ],
+        "fts5": [
+          4,
+          10
+        ],
+        "pg": [
+          4,
+          10
+        ],
+        "pg_tsquery": "'refundtool'",
+        "same": true
+      },
+      "refundtool": {
+        "tokens": [
+          "refundtool"
+        ],
+        "fts5": [
+          4,
+          10
+        ],
+        "pg": [
+          4,
+          10
+        ],
+        "pg_tsquery": "'refundtool'",
+        "same": true
+      },
+      "kb-lookup": {
+        "tokens": [
+          "kb",
+          "lookup"
+        ],
+        "fts5": [
+          8
+        ],
+        "pg": [
+          8
+        ],
+        "pg_tsquery": "'kb' & 'lookup'",
+        "same": true
+      },
+      "sql.execute": {
+        "tokens": [
+          "sql",
+          "execute"
+        ],
+        "fts5": [
+          8
+        ],
+        "pg": [],
+        "pg_tsquery": "'sql' & 'execute'",
+        "same": false
+      },
+      "cafe": {
+        "tokens": [
+          "cafe"
+        ],
+        "fts5": [
+          5,
+          9
+        ],
+        "pg": [],
+        "pg_tsquery": "'cafe'",
+        "same": false
+      },
+      "café": {
+        "tokens": [
+          "café"
+        ],
+        "fts5": [
+          5,
+          9
+        ],
+        "pg": [
+          5,
+          9
+        ],
+        "pg_tsquery": "'café'",
+        "same": true
+      },
+      "resume": {
+        "tokens": [
+          "resume"
+        ],
+        "fts5": [
+          9
+        ],
+        "pg": [],
+        "pg_tsquery": "'resume'",
+        "same": false
+      },
+      "search web": {
+        "tokens": [
+          "search",
+          "web"
+        ],
+        "fts5": [
+          1,
+          5,
+          10
+        ],
+        "pg": [
+          1,
+          5,
+          10
+        ],
+        "pg_tsquery": "'search' & 'web'",
+        "same": true
+      }
+    }
+  },
+  "normalized_docs_and_queries": {
+    "all_same": true,
+    "terms": {
+      "search_web": {
+        "tokens": [
+          "search",
+          "web"
+        ],
+        "fts5": [
+          1,
+          5,
+          10
+        ],
+        "pg": [
+          1,
+          5,
+          10
+        ],
+        "pg_tsquery": "'search' & 'web'",
+        "same": true
+      },
+      "search": {
+        "tokens": [
+          "search"
+        ],
+        "fts5": [
+          1,
+          5,
+          10
+        ],
+        "pg": [
+          1,
+          5,
+          10
+        ],
+        "pg_tsquery": "'search'",
+        "same": true
+      },
+      "web": {
+        "tokens": [
+          "web"
+        ],
+        "fts5": [
+          1,
+          5,
+          10
+        ],
+        "pg": [
+          1,
+          5,
+          10
+        ],
+        "pg_tsquery": "'web'",
+        "same": true
+      },
+      "db.query": {
+        "tokens": [
+          "db",
+          "query"
+        ],
+        "fts5": [
+          2,
+          6
+        ],
+        "pg": [
+          2,
+          6
+        ],
+        "pg_tsquery": "'db' & 'query'",
+        "same": true
+      },
+      "db": {
+        "tokens": [
+          "db"
+        ],
+        "fts5": [
+          2,
+          6
+        ],
+        "pg": [
+          2,
+          6
+        ],
+        "pg_tsquery": "'db'",
+        "same": true
+      },
+      "query": {
+        "tokens": [
+          "query"
+        ],
+        "fts5": [
+          2,
+          6
+        ],
+        "pg": [
+          2,
+          6
+        ],
+        "pg_tsquery": "'query'",
+        "same": true
+      },
+      "gpt-4o-mini": {
+        "tokens": [
+          "gpt",
+          "4o",
+          "mini"
+        ],
+        "fts5": [
+          3
+        ],
+        "pg": [
+          3
+        ],
+        "pg_tsquery": "'gpt' & '4o' & 'mini'",
+        "same": true
+      },
+      "gpt-4o": {
+        "tokens": [
+          "gpt",
+          "4o"
+        ],
+        "fts5": [
+          3,
+          7
+        ],
+        "pg": [
+          3,
+          7
+        ],
+        "pg_tsquery": "'gpt' & '4o'",
+        "same": true
+      },
+      "4o": {
+        "tokens": [
+          "4o"
+        ],
+        "fts5": [
+          3,
+          7
+        ],
+        "pg": [
+          3,
+          7
+        ],
+        "pg_tsquery": "'4o'",
+        "same": true
+      },
+      "mini": {
+        "tokens": [
+          "mini"
+        ],
+        "fts5": [
+          3
+        ],
+        "pg": [
+          3
+        ],
+        "pg_tsquery": "'mini'",
+        "same": true
+      },
+      "RefundTool": {
+        "tokens": [
+          "refundtool"
+        ],
+        "fts5": [
+          4,
+          10
+        ],
+        "pg": [
+          4,
+          10
+        ],
+        "pg_tsquery": "'refundtool'",
+        "same": true
+      },
+      "refundtool": {
+        "tokens": [
+          "refundtool"
+        ],
+        "fts5": [
+          4,
+          10
+        ],
+        "pg": [
+          4,
+          10
+        ],
+        "pg_tsquery": "'refundtool'",
+        "same": true
+      },
+      "kb-lookup": {
+        "tokens": [
+          "kb",
+          "lookup"
+        ],
+        "fts5": [
+          8
+        ],
+        "pg": [
+          8
+        ],
+        "pg_tsquery": "'kb' & 'lookup'",
+        "same": true
+      },
+      "sql.execute": {
+        "tokens": [
+          "sql",
+          "execute"
+        ],
+        "fts5": [
+          8
+        ],
+        "pg": [
+          8
+        ],
+        "pg_tsquery": "'sql' & 'execute'",
+        "same": true
+      },
+      "cafe": {
+        "tokens": [
+          "cafe"
+        ],
+        "fts5": [
+          5,
+          9
+        ],
+        "pg": [
+          5,
+          9
+        ],
+        "pg_tsquery": "'cafe'",
+        "same": true
+      },
+      "café": {
+        "tokens": [
+          "cafe"
+        ],
+        "fts5": [
+          5,
+          9
+        ],
+        "pg": [
+          5,
+          9
+        ],
+        "pg_tsquery": "'cafe'",
+        "same": true
+      },
+      "resume": {
+        "tokens": [
+          "resume"
+        ],
+        "fts5": [
+          9
+        ],
+        "pg": [
+          9
+        ],
+        "pg_tsquery": "'resume'",
+        "same": true
+      },
+      "search web": {
+        "tokens": [
+          "search",
+          "web"
+        ],
+        "fts5": [
+          1,
+          5,
+          10
+        ],
+        "pg": [
+          1,
+          5,
+          10
+        ],
+        "pg_tsquery": "'search' & 'web'",
+        "same": true
+      }
+    }
+  }
+}

@@ -1,0 +1,41 @@
+== Q1_default_page
+0|SEARCH r USING INDEX ix_runs_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+
+== Q1_keyset_page2
+0|SEARCH r USING INDEX ix_runs_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+
+== Q2_model
+0|SEARCH r USING INDEX ix_runs_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+0|SEARCH l EXISTS USING COVERING INDEX ix_llm_project_model_run (project_pk=? AND model=? AND run_pk=?)
+
+== Q2_tool
+0|SEARCH r USING INDEX ix_runs_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+0|SEARCH t EXISTS USING COVERING INDEX ix_tool_project_name_run (project_pk=? AND tool_name=? AND run_pk=?)
+
+== Q2_status
+0|SEARCH r USING INDEX ix_runs_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+
+== Q2_duration
+0|SEARCH r USING INDEX ix_runs_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+
+== Q3_root_attr_eq
+0|SEARCH r USING INDEX ix_runs_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+0|SEARCH s EXISTS USING INTEGER PRIMARY KEY (rowid=?)
+
+== Q3_fts_two_terms
+0|SEARCH r USING INDEX ix_runs_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+0|LIST SUBQUERY 1
+20|SCAN f VIRTUAL TABLE INDEX 0:M1
+20|SEARCH s USING INTEGER PRIMARY KEY (rowid=?)
+20|CREATE BLOOM FILTER
+
+== Q5_trace_1000
+0|SEARCH s USING INDEX uq_spans_run_span (run_pk=?)
+0|SCALAR SUBQUERY 1
+11|SCAN runs
+11|USE TEMP B-TREE FOR ORDER BY
+0|SEARCH l USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
+0|SEARCH t USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
+0|SEARCH a USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
+0|SEARCH g USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
+0|USE TEMP B-TREE FOR ORDER BY

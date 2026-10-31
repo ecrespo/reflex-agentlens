@@ -1,0 +1,184 @@
+== Q8_kpis
+0|USE TEMP B-TREE FOR count(DISTINCT)
+0|SEARCH runs USING INDEX ix_runs_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+0|SCALAR SUBQUERY 4
+52|CO-ROUTINE pr
+55|CO-ROUTINE w
+57|CO-ROUTINE (subquery-6)
+60|CO-ROUTINE (subquery-7)
+63|SEARCH runs USING INDEX ix_runs_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+63|USE TEMP B-TREE FOR ORDER BY
+60|SCAN (subquery-7)
+60|USE TEMP B-TREE FOR ORDER BY
+57|SCAN (subquery-6)
+55|SCAN w
+55|USE TEMP B-TREE FOR GROUP BY
+52|SCAN pr
+
+== Q10a_runs_by_status_day
+0|SEARCH runs USING INDEX ix_runs_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+0|USE TEMP B-TREE FOR GROUP BY
+
+== Q10b_tokens_cost_by_model
+0|SEARCH llm_calls USING INDEX ix_llm_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+0|USE TEMP B-TREE FOR GROUP BY
+
+== Q10b_cost_by_model_day
+0|SEARCH llm_calls USING COVERING INDEX ix_llm_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+0|USE TEMP B-TREE FOR GROUP BY
+
+== Q10c_latency_percentiles
+0|MERGE (UNION ALL)
+1|LEFT
+3|MERGE (UNION ALL)
+4|LEFT
+6|CO-ROUTINE x0
+8|CO-ROUTINE w
+10|CO-ROUTINE (subquery-25)
+13|CO-ROUTINE (subquery-26)
+16|CO-ROUTINE src
+18|COMPOUND QUERY
+19|LEFT-MOST SUBQUERY
+20|SEARCH llm_calls USING COVERING INDEX ix_llm_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+19|UNION ALL
+38|SEARCH tool_calls USING COVERING INDEX ix_tool_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+19|UNION ALL
+56|SEARCH graph_nodes USING INDEX ix_gn_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+19|UNION ALL
+80|SEARCH graph_nodes USING COVERING INDEX ix_gn_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+16|SCAN src
+16|USE TEMP B-TREE FOR ORDER BY
+13|SCAN (subquery-26)
+13|USE TEMP B-TREE FOR ORDER BY
+10|SCAN (subquery-25)
+8|SCAN w
+8|USE TEMP B-TREE FOR GROUP BY
+6|SCAN x0
+6|USE TEMP B-TREE FOR ORDER BY
+4|RIGHT
+350|CO-ROUTINE x1
+352|CO-ROUTINE w
+354|CO-ROUTINE (subquery-27)
+357|CO-ROUTINE (subquery-28)
+360|CO-ROUTINE src
+362|COMPOUND QUERY
+363|LEFT-MOST SUBQUERY
+364|SEARCH llm_calls USING COVERING INDEX ix_llm_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+363|UNION ALL
+382|SEARCH tool_calls USING COVERING INDEX ix_tool_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+363|UNION ALL
+400|SEARCH graph_nodes USING INDEX ix_gn_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+363|UNION ALL
+424|SEARCH graph_nodes USING COVERING INDEX ix_gn_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+360|SCAN src
+360|USE TEMP B-TREE FOR ORDER BY
+357|SCAN (subquery-28)
+357|USE TEMP B-TREE FOR ORDER BY
+354|SCAN (subquery-27)
+352|SCAN w
+352|USE TEMP B-TREE FOR GROUP BY
+350|SCAN x1
+350|USE TEMP B-TREE FOR ORDER BY
+1|RIGHT
+718|CO-ROUTINE x2
+720|CO-ROUTINE w
+722|CO-ROUTINE (subquery-29)
+725|CO-ROUTINE (subquery-30)
+728|CO-ROUTINE src
+730|COMPOUND QUERY
+731|LEFT-MOST SUBQUERY
+732|SEARCH llm_calls USING COVERING INDEX ix_llm_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+731|UNION ALL
+750|SEARCH tool_calls USING COVERING INDEX ix_tool_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+731|UNION ALL
+768|SEARCH graph_nodes USING INDEX ix_gn_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+731|UNION ALL
+792|SEARCH graph_nodes USING COVERING INDEX ix_gn_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+728|SCAN src
+728|USE TEMP B-TREE FOR ORDER BY
+725|SCAN (subquery-30)
+725|USE TEMP B-TREE FOR ORDER BY
+722|SCAN (subquery-29)
+720|SCAN w
+720|USE TEMP B-TREE FOR GROUP BY
+718|SCAN x2
+718|USE TEMP B-TREE FOR ORDER BY
+
+== Q10c_one_pass
+0|CO-ROUTINE z
+2|COMPOUND QUERY
+3|LEFT-MOST SUBQUERY
+4|CO-ROUTINE w
+6|CO-ROUTINE (subquery-14)
+9|CO-ROUTINE (subquery-15)
+12|SEARCH llm_calls USING COVERING INDEX ix_llm_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+12|USE TEMP B-TREE FOR ORDER BY
+9|SCAN (subquery-15)
+9|USE TEMP B-TREE FOR ORDER BY
+6|SCAN (subquery-14)
+4|SCAN w
+4|USE TEMP B-TREE FOR GROUP BY
+3|UNION ALL
+288|CO-ROUTINE w
+290|CO-ROUTINE (subquery-16)
+293|CO-ROUTINE (subquery-17)
+296|SEARCH tool_calls USING COVERING INDEX ix_tool_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+296|USE TEMP B-TREE FOR ORDER BY
+293|SCAN (subquery-17)
+293|USE TEMP B-TREE FOR ORDER BY
+290|SCAN (subquery-16)
+288|SCAN w
+288|USE TEMP B-TREE FOR GROUP BY
+3|UNION ALL
+574|CO-ROUTINE w
+576|CO-ROUTINE (subquery-18)
+579|CO-ROUTINE (subquery-19)
+582|SEARCH graph_nodes USING INDEX ix_gn_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+582|USE TEMP B-TREE FOR ORDER BY
+579|SCAN (subquery-19)
+579|USE TEMP B-TREE FOR ORDER BY
+576|SCAN (subquery-18)
+574|SCAN w
+574|USE TEMP B-TREE FOR GROUP BY
+3|UNION ALL
+867|CO-ROUTINE w
+869|CO-ROUTINE (subquery-20)
+872|CO-ROUTINE (subquery-21)
+875|SEARCH graph_nodes USING COVERING INDEX ix_gn_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+875|USE TEMP B-TREE FOR ORDER BY
+872|SCAN (subquery-21)
+872|USE TEMP B-TREE FOR ORDER BY
+869|SCAN (subquery-20)
+867|SCAN w
+867|USE TEMP B-TREE FOR GROUP BY
+0|SCAN z
+0|USE TEMP B-TREE FOR ORDER BY
+
+== Q10d_top_tools
+0|SEARCH tool_calls USING COVERING INDEX ix_tool_project_start (project_pk=? AND start_ns>? AND start_ns<?)
+0|USE TEMP B-TREE FOR GROUP BY
+0|USE TEMP B-TREE FOR ORDER BY
+
+== Q10e_by_source
+0|SCAN s
+0|SEARCH r USING INDEX ix_runs_project_source_start (project_pk=? AND source_pk=? AND start_ns>? AND start_ns<?)
+0|USE TEMP B-TREE FOR GROUP BY
+
+== Q10f_approvals
+0|CO-ROUTINE a
+2|SEARCH approvals USING COVERING INDEX ix_appr_project_requested (project_pk=? AND requested_ns>? AND requested_ns<?)
+2|USE TEMP B-TREE FOR GROUP BY
+0|MATERIALIZE m
+55|CO-ROUTINE w
+57|CO-ROUTINE (subquery-6)
+60|CO-ROUTINE (subquery-7)
+63|SEARCH approvals USING COVERING INDEX ix_appr_project_requested (project_pk=? AND requested_ns>? AND requested_ns<?)
+63|USE TEMP B-TREE FOR ORDER BY
+60|SCAN (subquery-7)
+60|USE TEMP B-TREE FOR ORDER BY
+57|SCAN (subquery-6)
+55|SCAN w
+55|USE TEMP B-TREE FOR GROUP BY
+0|SCAN a
+0|SEARCH m USING AUTOMATIC COVERING INDEX (decision=?) LEFT-JOIN
+0|USE TEMP B-TREE FOR ORDER BY

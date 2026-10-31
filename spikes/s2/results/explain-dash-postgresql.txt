@@ -1,0 +1,309 @@
+== Q8_kpis
+Aggregate  (cost=11661.57..11661.58 rows=1 width=104) (actual time=57.113..57.117 rows=1.00 loops=1)
+  Buffers: shared hit=5064
+  InitPlan 1
+    ->  Subquery Scan on pr  (cost=0.00..3474.43 rows=1 width=8) (actual time=20.047..20.049 rows=1.00 loops=1)
+          Buffers: shared hit=2532
+          ->  GroupAggregate  (cost=0.00..3474.42 rows=1 width=12) (actual time=20.045..20.046 rows=1.00 loops=1)
+                Buffers: shared hit=2532
+                ->  Seq Scan on runs runs_1  (cost=0.00..3356.72 rows=47074 width=8) (actual time=0.012..11.072 rows=47105.00 loops=1)
+                      Filter: ((duration_ns IS NOT NULL) AND (start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint) AND (project_pk = '1'::bigint))
+                      Rows Removed by Filter: 22
+                      Buffers: shared hit=2532
+  ->  Sort  (cost=7010.29..7127.97 rows=47074 width=39) (actual time=25.048..29.483 rows=47105.00 loops=1)
+        Sort Key: runs.session_pk
+        Sort Method: quicksort  Memory: 4062kB
+        Buffers: shared hit=2532
+        ->  Seq Scan on runs  (cost=0.00..3356.72 rows=47074 width=39) (actual time=0.011..14.686 rows=47105.00 loops=1)
+              Filter: ((start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint) AND (project_pk = '1'::bigint))
+              Rows Removed by Filter: 22
+              Buffers: shared hit=2532
+Planning Time: 0.305 ms
+Execution Time: 57.622 ms
+
+== Q10a_runs_by_status_day
+GroupAggregate  (cost=6637.33..7814.18 rows=47074 width=19) (actual time=8.197..11.775 rows=60.00 loops=1)
+  Group Key: (((start_ns / '86400000000000'::bigint) * '86400000000000'::bigint)), status
+  Buffers: shared hit=309
+  ->  Sort  (cost=6637.33..6755.02 rows=47074 width=11) (actual time=8.185..9.498 rows=47105.00 loops=1)
+        Sort Key: (((start_ns / '86400000000000'::bigint) * '86400000000000'::bigint)), status
+        Sort Method: quicksort  Memory: 3009kB
+        Buffers: shared hit=309
+        ->  Index Only Scan using ix_runs_project_status_start on runs  (cost=0.41..2983.77 rows=47074 width=11) (actual time=0.043..3.953 rows=47105.00 loops=1)
+              Index Cond: ((project_pk = '1'::bigint) AND (start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint))
+              Heap Fetches: 0
+              Index Searches: 1
+              Buffers: shared hit=309
+Planning Time: 0.301 ms
+Execution Time: 11.982 ms
+
+== Q10b_tokens_cost_by_model
+Finalize GroupAggregate  (cost=16759.08..16762.68 rows=10 width=149) (actual time=49.263..51.561 rows=10.00 loops=1)
+  Group Key: model
+  Buffers: shared hit=298 read=10369
+  ->  Gather Merge  (cost=16759.08..16761.88 rows=24 width=149) (actual time=49.252..51.539 rows=30.00 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=298 read=10369
+        ->  Sort  (cost=15759.06..15759.08 rows=10 width=149) (actual time=46.679..46.681 rows=10.00 loops=3)
+              Sort Key: model
+              Sort Method: quicksort  Memory: 26kB
+              Buffers: shared hit=298 read=10369
+              Worker 0:  Sort Method: quicksort  Memory: 26kB
+              Worker 1:  Sort Method: quicksort  Memory: 26kB
+              ->  Partial HashAggregate  (cost=15758.69..15758.89 rows=10 width=149) (actual time=46.636..46.640 rows=10.00 loops=3)
+                    Group Key: model
+                    Batches: 1  Memory Usage: 32kB
+                    Buffers: shared hit=282 read=10369
+                    Worker 0:  Batches: 1  Memory Usage: 32kB
+                    Worker 1:  Batches: 1  Memory Usage: 32kB
+                    ->  Parallel Seq Scan on llm_calls  (cost=0.00..13402.58 rows=157074 width=46) (actual time=0.055..16.203 rows=125737.67 loops=3)
+                          Filter: ((start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint) AND (project_pk = '1'::bigint))
+                          Rows Removed by Filter: 58
+                          Buffers: shared hit=282 read=10369
+Planning Time: 0.154 ms
+Execution Time: 51.600 ms
+
+== Q10b_cost_by_model_day
+GroupAggregate  (cost=63075.02..73441.88 rows=376977 width=53) (actual time=113.668..158.455 rows=300.00 loops=1)
+  Group Key: (((start_ns / '86400000000000'::bigint) * '86400000000000'::bigint)), model
+  Buffers: shared hit=10651, temp read=1964 written=1970
+  ->  Sort  (cost=63075.02..64017.46 rows=376977 width=29) (actual time=113.509..137.074 rows=377213.00 loops=1)
+        Sort Key: (((start_ns / '86400000000000'::bigint) * '86400000000000'::bigint)), model
+        Sort Method: external merge  Disk: 15712kB
+        Buffers: shared hit=10651, temp read=1964 written=1970
+        ->  Seq Scan on llm_calls  (cost=0.00..19139.68 rows=376977 width=29) (actual time=0.012..47.142 rows=377213.00 loops=1)
+              Filter: ((start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint) AND (project_pk = '1'::bigint))
+              Rows Removed by Filter: 174
+              Buffers: shared hit=10651
+Planning Time: 0.128 ms
+Execution Time: 160.436 ms
+
+== Q10c_latency_percentiles
+Gather Merge  (cost=397930.77..411906.75 rows=120000 width=85) (actual time=589.086..600.491 rows=51.00 loops=1)
+  Workers Planned: 2
+  Workers Launched: 2
+  Buffers: shared hit=40342 read=21242, temp read=11795 written=12023
+  ->  Sort  (cost=396930.75..397055.75 rows=50001 width=85) (actual time=534.258..534.268 rows=17.00 loops=3)
+        Sort Key: ('p50'::text), x0.dim, x0.g
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=40342 read=21242, temp read=11795 written=12023
+        Worker 0:  Sort Method: quicksort  Memory: 25kB
+        Worker 1:  Sort Method: quicksort  Memory: 25kB
+        ->  Parallel Append  (cost=185803.69..390634.25 rows=50001 width=85) (actual time=317.783..534.183 rows=17.00 loops=3)
+              Buffers: shared hit=40266 read=21242, temp read=11795 written=12023
+              ->  Subquery Scan on x0  (cost=185803.69..195192.12 rows=40000 width=85) (actual time=311.066..524.004 rows=17.00 loops=1)
+                    Buffers: shared hit=13186 read=7326, temp read=3816 written=4008
+                    ->  GroupAggregate  (cost=185803.69..194792.12 rows=40000 width=53) (actual time=311.063..523.988 rows=17.00 loops=1)
+                          Group Key: ('op'::text), llm_calls.operation
+                          Buffers: shared hit=13186 read=7326, temp read=3816 written=4008
+                          ->  Sort  (cost=185803.69..187925.80 rows=848843 width=53) (actual time=304.887..390.920 rows=848542.00 loops=1)
+                                Sort Key: ('op'::text), llm_calls.operation
+                                Buffers: shared hit=13178 read=7326, temp read=3170 written=3183
+                                Worker 0:  Sort Method: external merge  Disk: 25360kB
+                                ->  Append  (cost=0.00..44183.29 rows=848843 width=53) (actual time=18.520..171.461 rows=848542.00 loops=1)
+                                      Buffers: shared hit=13178 read=7326
+                                      ->  Seq Scan on llm_calls  (cost=0.00..17254.80 rows=376977 width=45) (actual time=18.519..66.503 rows=377213.00 loops=1)
+                                            Filter: ((start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint) AND (project_pk = '1'::bigint))
+                                            Rows Removed by Filter: 174
+                                            Buffers: shared hit=3345 read=7326
+                                      ->  Seq Scan on tool_calls  (cost=0.00..6160.56 rows=188342 width=72) (actual time=0.085..15.114 rows=188500.00 loops=1)
+                                            Filter: ((start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint) AND (project_pk = '1'::bigint))
+                                            Rows Removed by Filter: 90
+                                            Buffers: shared hit=2861
+                                      ->  Seq Scan on graph_nodes  (cost=0.00..8322.14 rows=47967 width=72) (actual time=0.083..17.133 rows=47105.00 loops=1)
+                                            Filter: ((start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint) AND (project_pk = '1'::bigint) AND ((node_kind)::text = 'agent'::text))
+                                            Rows Removed by Filter: 188731
+                                            Buffers: shared hit=3486
+                                      ->  Seq Scan on graph_nodes graph_nodes_1  (cost=0.00..8201.59 rows=235557 width=47) (actual time=0.041..23.508 rows=235724.00 loops=1)
+                                            Filter: ((start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint) AND (project_pk = '1'::bigint))
+                                            Rows Removed by Filter: 112
+                                            Buffers: shared hit=3486
+              ->  Subquery Scan on x1  (cost=185803.69..195192.12 rows=40000 width=85) (actual time=343.269..564.989 rows=17.00 loops=1)
+                    Buffers: shared hit=14020 read=6492, temp read=3990 written=4008
+                    ->  GroupAggregate  (cost=185803.69..194792.12 rows=40000 width=53) (actual time=343.264..564.972 rows=17.00 loops=1)
+                          Group Key: ('op'::text), llm_calls_1.operation
+                          Buffers: shared hit=14020 read=6492, temp read=3990 written=4008
+                          ->  Sort  (cost=185803.69..187925.80 rows=848843 width=53) (actual time=334.031..424.207 rows=848542.00 loops=1)
+                                Sort Key: ('op'::text), llm_calls_1.operation
+                                Buffers: shared hit=14012 read=6492, temp read=3170 written=3183
+                                Worker 1:  Sort Method: external merge  Disk: 25360kB
+                                ->  Append  (cost=0.00..44183.29 rows=848843 width=53) (actual time=23.521..184.167 rows=848542.00 loops=1)
+                                      Buffers: shared hit=14012 read=6492
+                                      ->  Seq Scan on llm_calls llm_calls_1  (cost=0.00..17254.80 rows=376977 width=45) (actual time=23.520..69.327 rows=377213.00 loops=1)
+                                            Filter: ((start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint) AND (project_pk = '1'::bigint))
+                                            Rows Removed by Filter: 174
+                                            Buffers: shared hit=4179 read=6492
+                                      ->  Seq Scan on tool_calls tool_calls_1  (cost=0.00..6160.56 rows=188342 width=72) (actual time=0.062..19.013 rows=188500.00 loops=1)
+                                            Filter: ((start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint) AND (project_pk = '1'::bigint))
+                                            Rows Removed by Filter: 90
+                                            Buffers: shared hit=2861
+                                      ->  Seq Scan on graph_nodes graph_nodes_2  (cost=0.00..8322.14 rows=47967 width=72) (actual time=0.093..18.341 rows=47105.00 loops=1)
+                                            Filter: ((start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint) AND (project_pk = '1'::bigint) AND ((node_kind)::text = 'agent'::text))
+                                            Rows Removed by Filter: 188731
+                                            Buffers: shared hit=3486
+                                      ->  Seq Scan on graph_nodes graph_nodes_3  (cost=0.00..8201.59 rows=235557 width=47) (actual time=0.034..24.873 rows=235724.00 loops=1)
+                                            Filter: ((start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint) AND (project_pk = '1'::bigint))
+                                            Rows Removed by Filter: 112
+                                            Buffers: shared hit=3486
+              ->  Subquery Scan on x2  (cost=185803.69..195192.12 rows=40000 width=85) (actual time=299.011..513.507 rows=17.00 loops=1)
+                    Buffers: shared hit=13060 read=7424, temp read=3989 written=4007
+                    ->  GroupAggregate  (cost=185803.69..194792.12 rows=40000 width=53) (actual time=299.009..513.490 rows=17.00 loops=1)
+                          Group Key: ('op'::text), llm_calls_2.operation
+                          Buffers: shared hit=13060 read=7424, temp read=3989 written=4007
+                          ->  Sort  (cost=185803.69..187925.80 rows=848843 width=53) (actual time=293.226..377.309 rows=848542.00 loops=1)
+                                Sort Key: ('op'::text), llm_calls_2.operation
+                                Sort Method: external merge  Disk: 25352kB
+                                Buffers: shared hit=13060 read=7424, temp read=3169 written=3182
+                                ->  Append  (cost=0.00..44183.29 rows=848843 width=53) (actual time=14.673..161.038 rows=848542.00 loops=1)
+                                      Buffers: shared hit=13060 read=7424
+                                      ->  Seq Scan on llm_calls llm_calls_2  (cost=0.00..17254.80 rows=376977 width=45) (actual time=14.673..56.142 rows=377213.00 loops=1)
+                                            Filter: ((start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint) AND (project_pk = '1'::bigint))
+                                            Rows Removed by Filter: 174
+                                            Buffers: shared hit=3227 read=7424
+                                      ->  Seq Scan on tool_calls tool_calls_2  (cost=0.00..6160.56 rows=188342 width=72) (actual time=0.046..14.158 rows=188500.00 loops=1)
+                                            Filter: ((start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint) AND (project_pk = '1'::bigint))
+                                            Rows Removed by Filter: 90
+                                            Buffers: shared hit=2861
+                                      ->  Seq Scan on graph_nodes graph_nodes_4  (cost=0.00..8322.14 rows=47967 width=72) (actual time=0.031..18.175 rows=47105.00 loops=1)
+                                            Filter: ((start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint) AND (project_pk = '1'::bigint) AND ((node_kind)::text = 'agent'::text))
+                                            Rows Removed by Filter: 188731
+                                            Buffers: shared hit=3486
+                                      ->  Seq Scan on graph_nodes graph_nodes_5  (cost=0.00..8201.59 rows=235557 width=47) (actual time=0.053..23.549 rows=235724.00 loops=1)
+                                            Filter: ((start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint) AND (project_pk = '1'::bigint))
+                                            Rows Removed by Filter: 112
+                                            Buffers: shared hit=3486
+Planning Time: 0.394 ms
+JIT:
+  Functions: 207
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 6.485 ms (Deform 3.055 ms), Inlining 0.000 ms, Optimization 3.486 ms, Emission 53.276 ms, Total 63.247 ms
+Execution Time: 604.218 ms
+
+== Q10c_one_pass
+Subquery Scan on z  (cost=76609.63..182337.71 rows=40000 width=69) (actual time=132.810..345.324 rows=17.00 loops=1)
+  Buffers: shared hit=7048 read=13512, temp read=3992 written=4009
+  ->  GroupAggregate  (cost=76609.63..182337.71 rows=40000 width=77) (actual time=132.806..345.302 rows=17.00 loops=1)
+        Group Key: ('op'::text), llm_calls.operation
+        Buffers: shared hit=7048 read=13512, temp read=3992 written=4009
+        ->  Gather Merge  (cost=76609.63..175471.38 rows=848843 width=53) (actual time=125.168..231.681 rows=848542.00 loops=1)
+              Workers Planned: 2
+              Workers Launched: 2
+              Buffers: shared hit=7048 read=13512, temp read=3172 written=3184
+              ->  Sort  (cost=75609.60..76493.82 rows=353685 width=53) (actual time=110.677..134.944 rows=282847.33 loops=3)
+                    Sort Key: ('op'::text), llm_calls.operation
+                    Sort Method: external merge  Disk: 10808kB
+                    Buffers: shared hit=7048 read=13512, temp read=3172 written=3184
+                    Worker 0:  Sort Method: external merge  Disk: 7152kB
+                    Worker 1:  Sort Method: external merge  Disk: 7416kB
+                    ->  Parallel Append  (cost=0.00..30924.81 rows=353685 width=53) (actual time=7.285..58.653 rows=282847.33 loops=3)
+                          Buffers: shared hit=6972 read=13512
+                          ->  Parallel Seq Scan on llm_calls  (cost=0.00..13402.58 rows=157074 width=45) (actual time=2.844..17.204 rows=125737.67 loops=3)
+                                Filter: ((start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint) AND (project_pk = '1'::bigint))
+                                Rows Removed by Filter: 58
+                                Buffers: shared read=10651
+                          ->  Parallel Seq Scan on graph_nodes  (cost=0.00..5501.06 rows=19986 width=72) (actual time=8.291..27.978 rows=47105.00 loops=1)
+                                Filter: ((start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint) AND (project_pk = '1'::bigint) AND ((node_kind)::text = 'agent'::text))
+                                Rows Removed by Filter: 188731
+                                Buffers: shared hit=3486
+                          ->  Parallel Seq Scan on graph_nodes graph_nodes_1  (cost=0.00..5450.83 rows=98149 width=47) (actual time=0.034..12.041 rows=117862.00 loops=2)
+                                Filter: ((start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint) AND (project_pk = '1'::bigint))
+                                Rows Removed by Filter: 56
+                                Buffers: shared hit=3486
+                          ->  Parallel Seq Scan on tool_calls  (cost=0.00..4801.91 rows=110789 width=72) (actual time=5.270..18.279 rows=188500.00 loops=1)
+                                Filter: ((start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint) AND (project_pk = '1'::bigint))
+                                Rows Removed by Filter: 90
+                                Buffers: shared read=2861
+Planning Time: 0.229 ms
+JIT:
+  Functions: 53
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 2.777 ms (Deform 1.253 ms), Inlining 0.000 ms, Optimization 1.362 ms, Emission 20.430 ms, Total 24.568 ms
+Execution Time: 347.325 ms
+
+== Q10d_top_tools
+Limit  (cost=6917.99..6918.02 rows=10 width=26) (actual time=26.604..31.301 rows=10.00 loops=1)
+  Buffers: shared hit=1757 read=1112
+  ->  Sort  (cost=6917.99..6918.07 rows=30 width=26) (actual time=26.602..31.297 rows=10.00 loops=1)
+        Sort Key: (count(*)) DESC, tool_name
+        Sort Method: top-N heapsort  Memory: 26kB
+        Buffers: shared hit=1757 read=1112
+        ->  Finalize GroupAggregate  (cost=6910.85..6917.35 rows=30 width=26) (actual time=26.580..31.289 rows=30.00 loops=1)
+              Group Key: tool_name
+              Buffers: shared hit=1757 read=1112
+              ->  Gather Merge  (cost=6910.85..6916.66 rows=51 width=26) (actual time=26.573..31.276 rows=60.00 loops=1)
+                    Workers Planned: 1
+                    Workers Launched: 1
+                    Buffers: shared hit=1757 read=1112
+                    ->  Sort  (cost=5910.84..5910.92 rows=30 width=26) (actual time=20.375..20.377 rows=30.00 loops=2)
+                          Sort Key: tool_name
+                          Sort Method: quicksort  Memory: 26kB
+                          Buffers: shared hit=1757 read=1112
+                          Worker 0:  Sort Method: quicksort  Memory: 26kB
+                          ->  Partial HashAggregate  (cost=5909.80..5910.10 rows=30 width=26) (actual time=20.345..20.349 rows=30.00 loops=2)
+                                Group Key: tool_name
+                                Batches: 1  Memory Usage: 32kB
+                                Buffers: shared hit=1749 read=1112
+                                Worker 0:  Batches: 1  Memory Usage: 32kB
+                                ->  Parallel Seq Scan on tool_calls  (cost=0.00..4801.91 rows=110789 width=13) (actual time=0.006..8.217 rows=94250.00 loops=2)
+                                      Filter: ((start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint) AND (project_pk = '1'::bigint))
+                                      Rows Removed by Filter: 45
+                                      Buffers: shared hit=1749 read=1112
+Planning Time: 0.131 ms
+Execution Time: 31.339 ms
+
+== Q10e_by_source
+Sort  (cost=4292.39..4292.40 rows=5 width=85) (actual time=18.904..18.906 rows=5.00 loops=1)
+  Sort Key: s.service_name
+  Sort Method: quicksort  Memory: 25kB
+  Buffers: shared hit=2533
+  ->  HashAggregate  (cost=4292.26..4292.33 rows=5 width=85) (actual time=18.897..18.900 rows=5.00 loops=1)
+        Group Key: s.service_name
+        Batches: 1  Memory Usage: 32kB
+        Buffers: shared hit=2533
+        ->  Hash Join  (cost=1.11..3586.15 rows=47074 width=41) (actual time=0.012..13.312 rows=47105.00 loops=1)
+              Hash Cond: (r.source_pk = s.pk)
+              Buffers: shared hit=2533
+              ->  Seq Scan on runs r  (cost=0.00..3356.72 rows=47074 width=36) (actual time=0.005..6.996 rows=47105.00 loops=1)
+                    Filter: ((start_ns >= '1790812800000000000'::bigint) AND (start_ns < '1793404800000000000'::bigint) AND (project_pk = '1'::bigint))
+                    Rows Removed by Filter: 22
+                    Buffers: shared hit=2532
+              ->  Hash  (cost=1.05..1.05 rows=5 width=21) (actual time=0.005..0.006 rows=5.00 loops=1)
+                    Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                    Buffers: shared hit=1
+                    ->  Seq Scan on sources s  (cost=0.00..1.05 rows=5 width=21) (actual time=0.001..0.002 rows=5.00 loops=1)
+                          Buffers: shared hit=1
+Planning:
+  Buffers: shared hit=4
+Planning Time: 0.215 ms
+Execution Time: 18.936 ms
+
+== Q10f_approvals
+Merge Left Join  (cost=1257.10..1328.18 rows=4 width=24) (actual time=3.316..3.659 rows=4.00 loops=1)
+  Merge Cond: ((approvals.decision)::text = (approvals_1.decision)::text)
+  Buffers: shared hit=254
+  ->  Sort  (cost=340.02..340.03 rows=4 width=16) (actual time=1.200..1.201 rows=4.00 loops=1)
+        Sort Key: approvals.decision
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=127
+        ->  HashAggregate  (cost=339.94..339.98 rows=4 width=16) (actual time=1.195..1.196 rows=4.00 loops=1)
+              Group Key: approvals.decision
+              Batches: 1  Memory Usage: 32kB
+              Buffers: shared hit=127
+              ->  Seq Scan on approvals  (cost=0.00..292.66 rows=9456 width=8) (actual time=0.005..0.549 rows=9490.00 loops=1)
+                    Filter: ((requested_ns >= '1790812800000000000'::bigint) AND (requested_ns < '1793404800000000000'::bigint) AND (project_pk = '1'::bigint))
+                    Rows Removed by Filter: 2
+                    Buffers: shared hit=127
+  ->  GroupAggregate  (cost=917.08..988.05 rows=4 width=16) (actual time=2.115..2.455 rows=4.00 loops=1)
+        Group Key: approvals_1.decision
+        Buffers: shared hit=127
+        ->  Sort  (cost=917.08..940.72 rows=9456 width=16) (actual time=1.338..1.591 rows=9490.00 loops=1)
+              Sort Key: approvals_1.decision
+              Sort Method: quicksort  Memory: 744kB
+              Buffers: shared hit=127
+              ->  Seq Scan on approvals approvals_1  (cost=0.00..292.66 rows=9456 width=16) (actual time=0.002..0.618 rows=9490.00 loops=1)
+                    Filter: ((wait_ns IS NOT NULL) AND (requested_ns >= '1790812800000000000'::bigint) AND (requested_ns < '1793404800000000000'::bigint) AND (project_pk = '1'::bigint))
+                    Rows Removed by Filter: 2
+                    Buffers: shared hit=127
+Planning Time: 0.153 ms
+Execution Time: 3.686 ms

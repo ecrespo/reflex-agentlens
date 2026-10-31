@@ -1,0 +1,37 @@
+{
+  "seed": 42,
+  "spans": 1000014,
+  "runs": 47127,
+  "sessions": 8669,
+  "checksum": "3d2045a3913aca0793f94bb8b5448be9",
+  "deterministic": true,
+  "generate_s": 18.6,
+  "sqlite": {
+    "load_s": 56.9,
+    "spans_per_s": 17565,
+    "db_bytes": 842948608,
+    "counts": {
+      "runs": 47127,
+      "sessions": 8669,
+      "spans": 1000014,
+      "llm_calls": 377387,
+      "tool_calls": 188590,
+      "approvals": 9492,
+      "graph_nodes": 235836
+    }
+  },
+  "postgresql": {
+    "load_s": 113.9,
+    "spans_per_s": 8781,
+    "db_bytes": 1466627775,
+    "counts": {
+      "runs": 47127,
+      "sessions": 8669,
+      "spans": 1000014,
+      "llm_calls": 377387,
+      "tool_calls": 188590,
+      "approvals": 9492,
+      "graph_nodes": 235836
+    }
+  }
+}

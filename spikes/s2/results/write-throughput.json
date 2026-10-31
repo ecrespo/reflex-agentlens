@@ -1,0 +1,24 @@
+{
+  "sqlite": {
+    "seconds": 120.5,
+    "spans_inserted": 1928066,
+    "spans_per_s": 16002,
+    "groups": 374,
+    "group_size_mean": 5155,
+    "group_size_p50": 5120,
+    "commit_ms_p50": 261.6,
+    "commit_ms_p95": 525.5,
+    "commit_ms_max": 825.2
+  },
+  "postgresql": {
+    "seconds": 120.4,
+    "spans_inserted": 902246,
+    "spans_per_s": 7493,
+    "groups": 175,
+    "group_size_mean": 5156,
+    "group_size_p50": 5120,
+    "commit_ms_p50": 565.1,
+    "commit_ms_p95": 1326.5,
+    "commit_ms_max": 3267.3
+  }
+}
