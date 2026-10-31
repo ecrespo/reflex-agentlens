@@ -96,7 +96,8 @@ uv run reflex-agentlens       # CLI (currently prints the version)
 ```
 
 Branches are cut from `develop`; feature work goes in `feat/<task-id>-<slug>` and merges through a
-pull request. Tests cite the requirement they verify (`REQ-NNN.x`).
+pull request. Tests cite the requirement they verify (`REQ-NNN.x`). See [CONTRIBUTING.md](CONTRIBUTING.md) for the
+full workflow and [AGENTS.md](AGENTS.md) for coding-agent guidance.
 
 ## Roadmap
 
