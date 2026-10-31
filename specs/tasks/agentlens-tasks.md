@@ -432,7 +432,7 @@ contract-tested in exactly one task:
 - **Done**: `metadata.create_all` succeeds on SQLite and PG (pg-marked test); a test compares the
   created index names with the Data Model list; hypothesis round-trip test for the codec citing
   REQ-030.b.
-- [ ]
+- [x] 2026-10-31 · PR #11
 
 ### P2-01.2 · Schema: settings and auxiliary tables; row records
 - **What**: The remaining tables (§2.1–2.5 `app_meta`, `projects`, `api_keys`,
@@ -443,7 +443,7 @@ contract-tested in exactly one task:
 - **Depends on**: P2-01.1
 - **Done**: `create_all` on both backends; a test asserts that deleting a Project cascades to every
   dependent table (REQ-170 storage side); `mypy --strict` clean.
-- [ ]
+- [x] 2026-10-31 · PR #11
 
 ### P2-02.1 · Alembic environment and `0001_initial`
 - **What**: `store/migrations/env.py` (async engine, `render_as_batch` on SQLite, FTS5 shadow
@@ -454,7 +454,7 @@ contract-tested in exactly one task:
 - **Depends on**: P2-01.2
 - **Done**: `upgrade head` on empty SQLite and PG produces a schema equal to `metadata.create_all`
   (compared by reflection); `downgrade base` works in development.
-- [ ]
+- [x] 2026-10-31 · PR #11
 
 ### P2-02.2 · Schema status, guarded migration, version checks
 - **What**: `schema_status()` → `CURRENT | OUTDATED | NEWER` (from `alembic_version` vs. the
@@ -465,7 +465,7 @@ contract-tested in exactly one task:
 - **Depends on**: P2-02.1
 - **Done**: tests citing REQ-074 for each status (NEWER via a fake future revision), two concurrent
   `migrate()` calls on PG (one waits, both see CURRENT), a too-old SQLite version simulated.
-- [ ]
+- [x] 2026-10-31 · PR #11
 
 ### P2-03.1 · Storage protocol and dialect operations
 - **What**: `store.protocol.StorageBackend` (typed `Protocol`, API §5 v1.2) and
@@ -477,7 +477,7 @@ contract-tested in exactly one task:
 - **Depends on**: P2-01.2
 - **Done**: unit tests for the FTS builder (operators and quotes in user input never reach SQL
   syntax, citing REQ-325.b) and for `percentile_sql` against a Python nearest-rank reference.
-- [ ]
+- [x] 2026-10-31 · PR #12
 
 ### P2-04.1 · Contract-suite harness
 - **What**: `tests/contract/conftest.py`: backend-parametrized fixture (`sqlite` always, `pg` when
@@ -488,7 +488,7 @@ contract-tested in exactly one task:
 - **Depends on**: P2-03.1
 - **Done**: a smoke contract test runs on SQLite locally and on PG 15/18 in CI; the rows-fetched
   helper fails on a deliberately unbounded query.
-- [ ]
+- [x] 2026-10-31 · PR #12
 
 ### P2-05.1 · SQLite backend: engines and lifecycle
 - **What**: `store/sqlite/backend.py`: one WRITE connection (`BEGIN IMMEDIATE`) and a READ pool,
@@ -497,7 +497,7 @@ contract-tested in exactly one task:
 - **Depends on**: P2-02.2, P2-04.1
 - **Done**: tests: WAL active, pragmas set on every pooled connection, `ping` false after the file
   disappears.
-- [ ]
+- [x] 2026-10-31 · PR #12
 
 ### P2-05.2 · SQLite `write_batch`
 - **What**: API §5.1 in one transaction: Source/Session upserts, Run stubs (Q6 sorted
@@ -508,7 +508,7 @@ contract-tested in exactly one task:
 - **Done**: contract tests citing REQ-038 (duplicates counted, not stored twice), REQ-037.a
   (hypothesis: any order and batching of the same span set gives identical `runs`/`sessions`
   rows), REQ-032.b (status rules with an injected clock) and REQ-036.b (Session totals).
-- [ ]
+- [x] 2026-10-31 · PR #12
 
 ### P2-06.1 · PostgreSQL backend and `write_batch` with locks
 - **What**: `store/postgres/backend.py` on asyncpg: lifecycle, `write_batch` with the DD-004
@@ -517,7 +517,7 @@ contract-tested in exactly one task:
 - **REQ / design**: REQ-072.a, REQ-073.b, DD-004 (A-01)
 - **Depends on**: P2-05.2
 - **Done**: the P2-05.2 contract tests pass on PG 15 and 18.
-- [ ]
+- [x] 2026-10-31 · PR #12
 
 ### P2-06.2 · Multi-writer contract test
 - **What**: Two backends on the same PG database write interleaved batches of the **same** traces
@@ -526,7 +526,7 @@ contract-tested in exactly one task:
 - **Depends on**: P2-06.1
 - **Done**: test citing REQ-072.b: after both finish, `runs` and `sessions` equal a single-writer
   ingest of the same set; repeated 20× without a deadlock escaping the retry.
-- [ ]
+- [x] 2026-10-31 · PR #12
 
 ### P2-07.1 · Reads: runs and traces
 - **What**: Q1 (keyset), Q2 (derived-table filters), Q3 (attribute and text filters), Q4, Q5 and
@@ -536,14 +536,14 @@ contract-tested in exactly one task:
 - **Depends on**: P2-05.2, P2-06.1
 - **Done**: contract tests citing REQ-100/101/103 (each filter, keyset stability under inserts,
   scope isolation between Projects), identical results on both backends.
-- [ ]
+- [x] 2026-10-31 · PR #12
 
 ### P2-07.2 · Reads: Sessions
 - **What**: Q9 `list_sessions` and `get_session` on both backends.
 - **REQ / design**: REQ-105, Data Model Q9
 - **Depends on**: P2-07.1
 - **Done**: contract tests citing REQ-105.a/b.
-- [ ]
+- [x] 2026-10-31 · PR #13
 
 ### P2-07.3 · Dashboard aggregates
 - **What**: Q8 and Q10a–f: `agg_kpis`, `agg_runs_over_time`, `agg_tokens_cost_by_model`,
@@ -553,7 +553,7 @@ contract-tested in exactly one task:
 - **Depends on**: P2-07.1
 - **Done**: contract tests citing REQ-106.a–g on a known dataset (exact expected values, identical
   on both backends, `includes_unpriced` per REQ-061.c) and REQ-106.h (rows fetched bounded).
-- [ ]
+- [x] 2026-10-31 · PR #13
 
 ### P2-07.4 · Metric points
 - **What**: `write_metric_points` and Q11 `agg_metric_token_usage` (preferred
@@ -561,7 +561,7 @@ contract-tested in exactly one task:
 - **REQ / design**: REQ-005 (storage side), REQ-107, Data Model §2.16, Q11
 - **Depends on**: P2-07.3
 - **Done**: contract tests citing REQ-107.a.
-- [ ]
+- [x] 2026-10-31 · PR #13
 
 ### P2-08.1 · Projects and API keys
 - **What**: Project CRUD (slug rules, delete cascades), API key records (hash + salt only),
@@ -570,7 +570,7 @@ contract-tested in exactly one task:
 - **Depends on**: P2-05.2
 - **Done**: contract tests citing REQ-320.a (no plaintext secret in any column after a key is
   created and used) and `Conflict` on duplicate slugs.
-- [ ]
+- [x] 2026-10-31 · PR #13
 
 ### P2-08.2 · Pricing, redaction rules, saved filters, ingest settings
 - **What**: `save_pricing` (new immutable version, `effective_from_ns`), `list_pricing_versions`,
@@ -580,7 +580,7 @@ contract-tested in exactly one task:
 - **Depends on**: P2-08.1
 - **Done**: contract tests citing REQ-060.a (saved versions never change), REQ-060.c (lookup by
   time) and REQ-102.a.
-- [ ]
+- [x] 2026-10-31 · PR #14
 
 ### P2-08.3 · Derived-view maintenance
 - **What**: `finalize_stale_runs` (Q12 with `FOR UPDATE SKIP LOCKED` on PG), `rebuild` (re-derives
@@ -591,7 +591,7 @@ contract-tested in exactly one task:
 - **Depends on**: P2-06.2, P2-08.2
 - **Done**: contract tests citing REQ-032.b (in_progress → incomplete after the window),
   REQ-042 (rebuild is idempotent) and REQ-062.a.
-- [ ]
+- [x] 2026-10-31 · PR #14
 
 ### P2-09.1 · Retention and job locks
 - **What**: Q13 purge by age and by size in bounded batches (each its own transaction, runs locked
@@ -601,7 +601,7 @@ contract-tested in exactly one task:
 - **Depends on**: P2-07.2
 - **Done**: contract tests citing REQ-090.a, REQ-091.a (purges down to ≤ 90 % of the limit),
   REQ-092.b (a second `job_lock` holder gets False).
-- [ ]
+- [x] 2026-10-31 · PR #14
 
 ### P2-10.1 · Change feed: in-process
 - **What**: `store.changefeed`: thread-safe broadcaster; `write_batch`, finalizer and purge publish
@@ -812,6 +812,11 @@ the matrix). No requirement is deferred at this point.
 | 2026-10-31 | P0-09.1, P0-09.3 | Done | Run/trace queries ≤ 10 ms p95; FTS parity requires document normalization (applied to DD-006) |
 | 2026-10-31 | P0-09.2 | Measured | REQ-305: PG 724 ms ✓, SQLite 3.3 s ✗ (percentile panel 2.5 s); values identical → P0-10.1 decision |
 | 2026-10-31 | P0-06.1, P0-10.1 | In review | Tech Design v1.2 + Data Model v1.0.1 spec PR; REQ-305 option to be chosen by the maintainer |
+| 2026-10-31 | P1-01.1 … P1-08.1 | Done | PRs #6–#9; quality gates, CI, guidance, traceability, `core` |
+| 2026-10-31 | P2-01.1, 01.2, 02.1, 02.2 | Done | PR #11; schema for both backends, Alembic `0001_initial`, guarded migration |
+| 2026-10-31 | P2-03.1 … P2-07.1 | Done | PR #12; protocol, SQLite and PG `write_batch`, multi-writer test, run/trace reads; PG text ordering forced byte-wise (`COLLATE "C"`) |
+| 2026-10-31 | P2-07.2, 07.3, 07.4, 08.1 | Done | PR #13; Sessions, aggregates (auto bucket minute ≤ 2 h, hour ≤ 3 d), metric points (inference counters preferred over the legacy histogram), Projects and API keys |
+| 2026-10-31 | P2-08.2, 08.3, 09.1 | Done | PR #14; pricing versions, finalizer (`SKIP LOCKED`), rebuild, cost recompute, retention by age/size, job locks (PG advisory); retention age clamped to avoid BIGINT overflow |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).
