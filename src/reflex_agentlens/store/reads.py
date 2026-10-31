@@ -9,8 +9,7 @@ DD-006 builder (REQ-325.b).
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import Any
 
 from sqlalchemy import (
     ColumnElement,
@@ -25,7 +24,6 @@ from sqlalchemy import (
     text,
     tuple_,
 )
-from sqlalchemy.ext.asyncio import AsyncEngine
 
 from reflex_agentlens.core.errors import ValidationError
 from reflex_agentlens.store import schema as s
@@ -54,7 +52,6 @@ from reflex_agentlens.store.records import (
 
 __all__ = [
     "ATTRIBUTE_KEY",
-    "ReadMethods",
     "distinct_values",
     "find_runs_by_trace_id",
     "get_span_raw",
@@ -196,7 +193,7 @@ def _text_clause(ops: SqlDialectOps, query: str) -> ColumnElement[bool] | None:
     return r.c.pk.in_(sub.columns(s.spans.c.run_pk))
 
 
-def list_runs(conn: Connection, q: RunQuery) -> Page[RunSummary]:
+def list_runs(conn: Connection, q: RunQuery) -> Page[RunSummary, RunCursor]:
     """Q1-Q3: filtered, sorted, keyset-paginated Runs (REQ-100, REQ-101)."""
     if not 1 <= q.limit <= MAX_PAGE_SIZE:
         raise ValidationError("limit", f"must be between 1 and {MAX_PAGE_SIZE}")
@@ -477,43 +474,3 @@ def distinct_values(
     sub = stmt.distinct().subquery()
     ordered = select(sub.c.v).order_by(_bytewise(conn, sub.c.v)).limit(limit)
     return list(conn.execute(ordered).scalars())
-
-
-# ── async surface shared by both backends ────────────────────────────────────────────────────
-
-_R = TypeVar("_R")
-
-
-class ReadMethods:
-    """Mixin: the P2-07.1 protocol methods, run on the backend's read pool."""
-
-    @property
-    def read_engine(self) -> AsyncEngine:  # pragma: no cover - overridden by every backend
-        raise NotImplementedError
-
-    async def _on_read_pool(self, fn: Callable[..., _R], *args: Any) -> _R:
-        async with self.read_engine.connect() as conn:
-            return await conn.run_sync(fn, *args)
-
-    async def list_runs(self, query: RunQuery) -> Page[RunSummary]:
-        return await self._on_read_pool(list_runs, query)
-
-    async def find_runs_by_trace_id(self, scope: ProjectScope, trace_id: bytes) -> list[RunKey]:
-        return await self._on_read_pool(find_runs_by_trace_id, scope, trace_id)
-
-    async def get_trace(self, key: RunKey) -> TraceDetail | None:
-        return await self._on_read_pool(get_trace, key)
-
-    async def get_span_raw(self, key: RunKey, span_id: bytes) -> SpanRaw | None:
-        return await self._on_read_pool(get_span_raw, key, span_id)
-
-    async def list_llm_calls(self, key: RunKey) -> list[LLMCallView]:
-        return await self._on_read_pool(list_llm_calls, key)
-
-    async def list_sources(self, scope: ProjectScope) -> list[SourceView]:
-        return await self._on_read_pool(list_sources, scope)
-
-    async def distinct_values(
-        self, scope: ProjectScope, field: FacetField, time_range: TimeRange, limit: int = 100
-    ) -> list[str]:
-        return await self._on_read_pool(distinct_values, scope, field, time_range, limit)

@@ -90,6 +90,7 @@ ChangeKind = Literal["spans_committed", "runs_finalized", "purged", "settings_ch
 
 JsonObject = dict[str, JsonValue]
 T = TypeVar("T")
+C = TypeVar("C")
 
 
 class SchemaStatus(StrEnum):
@@ -578,9 +579,11 @@ class RunQuery:
 
 
 @dataclass(frozen=True, slots=True)
-class Page(Generic[T]):
+class Page(Generic[T, C]):
+    """One keyset page; ``next_cursor`` is ``None`` on the last page."""
+
     items: list[T]
-    next_cursor: RunCursor | None
+    next_cursor: C | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -662,3 +665,201 @@ class SourceView:
     source: SourceKey
     first_seen_ns: int
     last_seen_ns: int
+
+
+# ── reads: Sessions (P2-07.2; Data Model Q9) ─────────────────────────────────────────────────
+
+SessionSort = Literal[
+    "last_desc", "last_asc", "runs_desc", "runs_asc",
+    "tokens_desc", "tokens_asc", "cost_desc", "cost_asc",
+]  # fmt: skip
+
+
+@dataclass(frozen=True, slots=True)
+class SessionCursor:
+    sort_value: int
+    session_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class SessionQuery:
+    """REQ-105.a: Project, Source and time-range filters; Sessions with no Run are never listed."""
+
+    project_ids: ProjectScope
+    sources: tuple[SourceKey, ...] = ()
+    time_range: TimeRange | None = None
+    sort: SessionSort = "last_desc"
+    cursor: SessionCursor | None = None
+    limit: int = DEFAULT_PAGE_SIZE
+
+
+@dataclass(frozen=True, slots=True)
+class SessionSummary:
+    project_id: str
+    session_id: str
+    external_id: str
+    first_ns: int
+    last_ns: int
+    run_count: int
+    input_tokens: int
+    output_tokens: int
+    cached_input_tokens: int
+    cost_nusd: int
+    includes_unpriced: bool
+
+
+@dataclass(frozen=True, slots=True)
+class SessionRun:
+    """A Run of a Session with running totals up to and including it (REQ-105.b)."""
+
+    run: RunSummary
+    cumulative_tokens: int
+    cumulative_cost_nusd: int
+    cumulative_includes_unpriced: bool
+
+
+@dataclass(frozen=True, slots=True)
+class SessionDetail:
+    session: SessionSummary
+    runs: list[SessionRun]
+
+
+# ── aggregates (P2-07.3, P2-07.4; Data Model Q8, Q10, Q11) ───────────────────────────────────
+
+LatencyDim = Literal["operation", "node"]
+MINUTE_NS = 60 * 1_000_000_000
+HOUR_NS = 60 * MINUTE_NS
+DAY_NS = 24 * HOUR_NS
+
+
+def auto_bucket_ns(time_range: TimeRange) -> int:
+    """REQ-106: minute buckets up to 2 h, hour buckets up to 3 days, day buckets beyond."""
+    span = time_range.end_ns - time_range.start_ns
+    if span <= 2 * HOUR_NS:
+        return MINUTE_NS
+    if span <= 3 * DAY_NS:
+        return HOUR_NS
+    return DAY_NS
+
+
+@dataclass(frozen=True, slots=True)
+class AggQuery:
+    """Scope of a dashboard aggregate; buckets are aligned to the epoch (UTC)."""
+
+    project_ids: ProjectScope
+    time_range: TimeRange
+    sources: tuple[SourceKey, ...] = ()
+    bucket_ns: int | None = None
+
+    @property
+    def bucket(self) -> int:
+        return self.bucket_ns or auto_bucket_ns(self.time_range)
+
+
+@dataclass(frozen=True, slots=True)
+class Kpis:
+    """REQ-106.g; ``cost_nusd`` sums priced Runs only, ``unpriced_runs`` counts the others."""
+
+    runs: int
+    error_runs: int
+    input_tokens: int
+    output_tokens: int
+    cost_nusd: int
+    unpriced_runs: int
+    p95_duration_ns: int | None
+    active_sessions: int
+
+    @property
+    def total_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens
+
+    @property
+    def includes_unpriced(self) -> bool:
+        return self.unpriced_runs > 0
+
+
+@dataclass(frozen=True, slots=True, order=True)
+class SeriesPoint:
+    bucket_ns: int
+    group: tuple[str, ...]
+    value: int
+
+
+@dataclass(frozen=True, slots=True)
+class TimeSeries:
+    """Sparse points ordered by (bucket, group); missing buckets are zero."""
+
+    bucket_ns: int
+    points: list[SeriesPoint]
+
+
+@dataclass(frozen=True, slots=True)
+class ModelUsageRow:
+    """Totals of one model, overall (``bucket_ns`` None) or within one bucket (REQ-106.b)."""
+
+    model: str
+    bucket_ns: int | None
+    calls: int
+    input_tokens: int
+    output_tokens: int
+    cached_input_tokens: int
+    cost_nusd: int
+    unpriced_calls: int
+
+    @property
+    def includes_unpriced(self) -> bool:
+        return self.unpriced_calls > 0
+
+
+@dataclass(frozen=True, slots=True)
+class ModelUsage:
+    bucket_ns: int
+    totals: list[ModelUsageRow]
+    over_time: list[ModelUsageRow]
+
+
+@dataclass(frozen=True, slots=True)
+class LatencyRow:
+    """Nearest-rank percentiles (DD-005) of one operation or graph node (REQ-106.c)."""
+
+    group: str
+    count: int
+    p50_ns: int
+    p95_ns: int
+    p99_ns: int
+
+
+@dataclass(frozen=True, slots=True)
+class ToolStatRow:
+    tool_name: str
+    calls: int
+    errors: int
+
+    @property
+    def successes(self) -> int:
+        return self.calls - self.errors
+
+
+@dataclass(frozen=True, slots=True)
+class SourceUsageRow:
+    source: SourceKey
+    runs: int
+    input_tokens: int
+    output_tokens: int
+    cost_nusd: int
+    unpriced_runs: int
+
+
+@dataclass(frozen=True, slots=True)
+class ApprovalDecisionRow:
+    decision: ApprovalDecision
+    count: int
+    median_wait_ns: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class ApprovalStats:
+    """REQ-106.f: count per decision and the median wait over every decided approval."""
+
+    by_decision: list[ApprovalDecisionRow]
+    median_wait_ns: int | None

@@ -33,7 +33,7 @@ from reflex_agentlens.store.dialect import SqlDialectOps, ops_for
 from reflex_agentlens.store.recompute import recompute_runs
 from reflex_agentlens.store.records import NormalizedBatch, NormalizedSpan, RunKey, SourceKey
 
-__all__ = ["MAX_BIND_PARAMS", "WriteOutcome", "write_batch"]
+__all__ = ["MAX_BIND_PARAMS", "WriteOutcome", "project_pk_of", "upsert_sources", "write_batch"]
 
 MAX_BIND_PARAMS = 32_000  # SQLite's limit is 32,766; PostgreSQL's 65,535
 T = TypeVar("T")
@@ -52,7 +52,7 @@ def _chunks(rows: Sequence[T], columns: int) -> Iterator[Sequence[T]]:
         yield rows[i : i + size]
 
 
-def _project_pk(conn: Connection, project_id: str) -> int:
+def project_pk_of(conn: Connection, project_id: str) -> int:
     pk = conn.execute(select(s.projects.c.pk).where(s.projects.c.id == project_id)).scalar()
     if pk is None:
         raise NotFound("project")
@@ -67,13 +67,17 @@ def _dedupe(spans: Iterable[NormalizedSpan]) -> list[NormalizedSpan]:
     return list(seen.values())
 
 
-def _upsert_sources(
-    conn: Connection, ops: SqlDialectOps, project_pk: int, spans: list[NormalizedSpan]
+def upsert_sources(
+    conn: Connection,
+    ops: SqlDialectOps,
+    project_pk: int,
+    seen: Iterable[tuple[SourceKey, int, int]],
 ) -> dict[SourceKey, int]:
+    """Create or widen Sources from ``(source, first_ns, last_ns)`` sightings (REQ-031)."""
     bounds: dict[SourceKey, tuple[int, int]] = {}
-    for sp in spans:
-        lo, hi = bounds.get(sp.source, (sp.start_ns, sp.end_ns))
-        bounds[sp.source] = (min(lo, sp.start_ns), max(hi, sp.end_ns))
+    for key, first, last in seen:
+        lo, hi = bounds.get(key, (first, last))
+        bounds[key] = (min(lo, first), max(hi, last))
     rows = [
         {
             "project_pk": project_pk,
@@ -234,12 +238,14 @@ def write_batch(
 ) -> WriteOutcome:
     """Persist ``batch`` in the caller's transaction; see the module docstring."""
     ops = ops_for(conn.dialect.name)
-    project_pk = _project_pk(conn, batch.project_id)
+    project_pk = project_pk_of(conn, batch.project_id)
     spans = _dedupe(batch.spans)
     if not spans:
         return WriteOutcome(0, 0, [])
 
-    source_pks = _upsert_sources(conn, ops, project_pk, spans)
+    source_pks = upsert_sources(
+        conn, ops, project_pk, ((sp.source, sp.start_ns, sp.end_ns) for sp in spans)
+    )
     resource_pks = _upsert_resources(conn, ops, project_pk, spans)
     _upsert_sessions(conn, ops, project_pk, spans, now_ns)
     run_pks = _lock_run_stubs(conn, ops, project_pk, spans, now_ns)
