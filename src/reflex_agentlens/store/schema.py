@@ -41,6 +41,7 @@ __all__ = [
     "SEARCH_TABLE",
     "create_all",
     "create_search",
+    "drop_search",
     "metadata",
 ]
 
@@ -621,6 +622,15 @@ def create_search(conn: Connection) -> None:
     else:
         pg_search_metadata.create_all(conn)
         conn.exec_driver_sql(PG_SEARCH_FK)
+
+
+def drop_search(conn: Connection) -> None:
+    """Drop the backend-specific ``span_search`` (before dropping ``spans``)."""
+    if conn.dialect.name == "sqlite":
+        conn.exec_driver_sql("DROP TRIGGER IF EXISTS trg_spans_search_delete")
+        conn.exec_driver_sql("DROP TABLE IF EXISTS span_search")
+    else:
+        pg_search_metadata.drop_all(conn)
 
 
 def create_all(conn: Connection) -> None:
