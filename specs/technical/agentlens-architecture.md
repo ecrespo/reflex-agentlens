@@ -6,7 +6,7 @@
 |---|---|
 | **Author** | Ernesto Crespo (`ecrespo`) |
 | **Status** | `APPROVED` |
-| **Version** | 1.3 |
+| **Version** | 1.4 |
 | **Date** | 2026-10-31 |
 | **Related PRD** | [`specs/prd/agentlens-v0.1.md`](../prd/agentlens-v0.1.md) v1.0 |
 | **Related API Spec** | [`specs/api/agentlens-api-v1.md`](../api/agentlens-api-v1.md) v1.0 |
@@ -127,14 +127,15 @@ without Reflex.
     (run_coroutine_threadsafe); the HTTP handler awaits the wrapped future
  7. [ingest loop] decode ExportTraceServiceRequest (protobuf, or JSON via json_format) → 400
  8. Span token bucket (by decoded span count)                     → 429
- 9. Per span: validate → truncate long values → redaction (rules, then hook)
+ 9. Per span: validate (incl. clock skew) → redaction (rules, then hook) → truncate long values
     → content drop (if the Project disabled it) → derive LLMCall/ToolCall/Approval/GraphNode
     → cost (pricing snapshot) → search document. Invalid spans are counted as rejected
 10. Enqueue NormalizedBatch in the WriteQueue (byte budget)        → 503 if full
-11. Writer groups queued batches (≤ 50 ms or ≤ 5,000 spans) into ONE transaction:
-    write_batch() semantics (API §5.1): insert-or-ignore spans, derived rows,
-    recompute affected Runs and Sessions in SQL
-12. COMMIT. Each batch's future is resolved with its WriteResult
+11. Writer groups queued batches (≤ 50 ms or ≤ 5,000 spans) into ONE transaction, one
+    SAVEPOINT per batch: write_batch() semantics (API §5.1): insert-or-ignore spans, derived
+    rows, recompute affected Runs and Sessions in SQL
+12. COMMIT. Each committed batch's future gets its WriteResult; a batch rolled back to its
+    savepoint gets BatchRejected (DD-003)
 13. ChangeFeed.publish() (in-process; plus NOTIFY on PG, in the same transaction)
 14. Handler encodes ExportTraceServiceResponse (partialSuccess if rejections) → 200
 ```
@@ -161,6 +162,7 @@ first 2,000 SpanNodes in DFS order are loaded into state, with subtrees deeper t
 
 | Failure | Handling |
 |---|---|
+| One batch of a group hits a data error (e.g. its Project was deleted while the key was still in the auth cache) | Roll back to that batch's savepoint; its future resolves to `BatchRejected` → 400 / `INVALID_ARGUMENT` (not retryable); the rest of the group commits (DD-003, Analyze A-04) |
 | DB unreachable at commit | Writer fails the whole group. Futures resolve to `StorageUnavailable` → 503 / `UNAVAILABLE` (retryable). `/readyz` turns not ready. The writer retries `ping()` with backoff 0.5 → 5 s and resumes automatically [REQ-330] |
 | Commit latency p50(5 s) > threshold, or queue bytes > budget | Admission returns 503 before decoding [REQ-009.b] |
 | Redaction regex timeout | Value replaced by `[REDACTED:timeout]`, counter incremented [REQ-039.d] |
@@ -256,6 +258,13 @@ first 2,000 SpanNodes in DFS order are loaded into state, with subtrees deeper t
   commits are synchronous (default) and each writer has its own connection, so several `collect`
   replicas write concurrently. Multi-row inserts use `INSERT … ON CONFLICT DO NOTHING RETURNING`,
   which tells which spans are new.
+- **Per-batch isolation (Analyze A-04):** each batch of a group runs inside its own `SAVEPOINT`.
+  If a statement of one batch fails with a **data error** (integrity or data exception: SQLSTATE
+  classes `22` and `23` on PostgreSQL, constraint errors on SQLite), the writer rolls back to that
+  savepoint, resolves the batch's future with `BatchRejected` and commits the rest of the group.
+  Any other error (lost connection, I/O, lock timeout) fails the whole group with
+  `StorageUnavailable`. A PostgreSQL deadlock retries the whole group once (DD-004). Change-feed
+  events are published only for the batches that committed.
 - **Alternatives:**
   - Acknowledge on enqueue (faster, but loses data on crash; violates REQ-009.a).
   - Per-request transactions (simpler, but SQLite tops out at roughly hundreds of commits per
@@ -1040,3 +1049,4 @@ PRD v1.1 / API v1.1 edits in the same commit that approves this design.
 | 1.1.1 | 2026-10-31 | Ernesto Crespo (with Claude) | Analyze A-03: DD-005 PostgreSQL percentiles use `percentile_disc` (nearest-rank), matching Data Model Q8 |
 | 1.2 | 2026-10-31 | Ernesto Crespo (with Claude) | Spike results §11.1 (S1) and §11.2 (S2). DD-001 lifespan-started ingest thread. DD-002 consequence 1 resolved (env module rewrite), consequences 4–5 added; A6 dropped. DD-006 search normalization (A-15). DD-018 hashes over all exported HTML, from the shipped artifact. REQ-305 decision open (P0-10.1) |
 | 1.3 | 2026-10-31 | Ernesto Crespo (with Claude) | Analyze A-01: DD-004 concurrency rule (lock Runs then Sessions in a deterministic order; `ON CONFLICT DO UPDATE` stubs; one retry on deadlock) |
+| 1.4 | 2026-10-31 | Ernesto Crespo (with Claude) | Delta `changes/2026-10-p3-ingest-prep/`: DD-003 per-batch savepoints (A-04); Flow 1 redacts before truncating (A-07) and validates clock skew (A-17); error table row for `BatchRejected` |

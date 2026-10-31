@@ -1,10 +1,10 @@
 # Tasks — reflex-agentlens v0.1
 
 > Source specs: [Constitution](../constitution.md) v1.2 · [PRD](../prd/agentlens-v0.1.md) v1.1 ·
-> [API Spec](../api/agentlens-api-v1.md) v1.2 · [Tech Design](../technical/agentlens-architecture.md) v1.3 ·
-> [Data Model](../data-model/agentlens-schema.md) v1.1 · [Implementation Plan](../plans/agentlens-phase-1.md) v1.0
-> Plan phases detailed in this revision: **P0 (spikes), P1 (foundation and `core`) and P2 (store)** · Generated: 2026-10-31
-> Status: `IN REVIEW` (P2 detailing) · Version 1.1
+> [API Spec](../api/agentlens-api-v1.md) v1.3 · [Tech Design](../technical/agentlens-architecture.md) v1.4 ·
+> [Data Model](../data-model/agentlens-schema.md) v1.2 · [Implementation Plan](../plans/agentlens-phase-1.md) v1.0
+> Plan phases detailed in this revision: **P0 (spikes), P1 (foundation and `core`), P2 (store) and P3 (ingest)** · Generated: 2026-10-31
+> Status: `APPROVED` (P3 detailing adopted under the standing authorization of 2026-10-31) · Version 1.2
 
 ## How this file works
 
@@ -637,7 +637,285 @@ P2-08.3, P2-09.1 · (6) P2-10.1, P2-10.2, P2-11.1.
 
 ---
 
-## Phases P3–P10 — to be detailed at phase start
+## Phase P3 — Ingest
+
+Detailed 2026-10-31 after P2. Inputs: API v1.3, Tech Design v1.4, Data Model v1.2 (Delta Spec
+`changes/2026-10-p3-ingest-prep/`, closing Analyze A-04, A-07, A-08 and A-17). Code lives under
+`src/reflex_agentlens/core/semconv/` and `src/reflex_agentlens/ingest/` (Tech Design §5.1); tests
+under `tests/unit/core/`, `tests/unit/ingest/`, `tests/golden/`, `tests/property/` and
+`tests/integration/`. `ingest` never imports `query` or `reflex` (import contracts). Failing test
+first or in the same commit (Art. 8). Branches: `feat/P3-<nn>-<slug>` from `develop`.
+
+**Design notes.**
+- The normalizer is a pipeline of **pure functions** (Tech Design §5.2): `decode → validate →
+  redact → truncate → content drop → derive → cost → search document`. Order per Tech Design v1.4
+  Flow 1 (redaction before truncation, A-07). No I/O inside it; settings, pricing and the session
+  key arrive as arguments (snapshots taken by the engine).
+- Store additions owned by P3 (protocol ownership, Analyze A-06): `write_group`,
+  `get_or_create_secret` (P3-06.1).
+
+### P3-01.1 · `core.semconv` constants and pinned GenAI commit
+- **What**: `constants.py`: `SEMCONV_CORE = "1.44.0"`, `SEMCONV_GENAI_COMMIT` (a full SHA of the
+  GenAI conventions source used for §5.3), and every attribute key, event name, operation name and
+  metric name of Tech Design §5.3/§5.4 as constants. **Closes Q-T2.**
+- **REQ / design**: REQ-035, Art. 1, DD-009, Tech Design §5.3–5.4
+- **Depends on**: P1-06.1
+- **Done**: unit test asserts the pins (40-hex SHA) and that every key referenced by the mapping
+  table is a constant; README/Tasks record the pinned commit.
+- [ ]
+
+### P3-01.2 · Declarative mapping table and dialect resolution
+- **What**: `mapping.py`: `MAPPING_VERSION = 1`; one table of `Field → (Source, …)` in priority
+  order with `attr`, `json(attr, path)` and `flat(prefix)` sources, exactly Tech Design §5.3 + §5.4;
+  span classification rules (first match wins). `dialects.py`: resolution when several dialects are
+  present (spec `gen_ai.*` wins, REQ-035.b). No framework code paths.
+- **REQ / design**: REQ-035.a/b, REQ-251, DD-009, DD-010
+- **Depends on**: P3-01.1
+- **Done**: one table-driven test per mapping row and per classification rule; a both-dialects
+  fixture resolves to the spec value; a test renders the table to Markdown (input for P9-01).
+- [ ]
+
+### P3-01.3 · Messages normalizer
+- **What**: `messages.py`: attribute form (`gen_ai.input/output.messages`, system instructions),
+  event form (`gen_ai.*.message`, `gen_ai.choice`, `gen_ai.client.inference.operation.details`),
+  OpenInference flattened lists and legacy `gen_ai.prompt`/`completion` → one `Message` dataclass
+  (`role`, parts `text` / `tool_call` / `tool_result` / `reasoning` / `other{type, raw_json}`).
+  Input behind a small interface so log records can feed it later.
+- **REQ / design**: REQ-034.a/b, Data Model N1, Tech Design §5.3 (messages)
+- **Depends on**: P3-01.2
+- **Done**: the same conversation in each of the four forms normalizes to equal `Message` lists;
+  unknown part types land in `other` with their JSON.
+- [ ]
+
+### P3-02.1 · Decode and validate
+- **What**: `ingest/decode.py`: `ExportTraceServiceRequest` / `ExportMetricsServiceRequest` from
+  protobuf (upb) and OTLP/JSON (`json_format`, hex IDs) → `DecodeError` (400). `ingest/validate.py`:
+  API §3.6 rules incl. `future_timestamp` and `older_than_retention` (A-17), rejection counter per
+  reason and the `partialSuccess` message builder (fixed keys, never content).
+- **REQ / design**: REQ-001.c, REQ-002.a, REQ-010.a/b, API §3.3, §3.6
+- **Depends on**: P3-01.1
+- **Done**: protobuf and JSON of the same request decode to equal spans; one test per rejection
+  reason; the message lists counts per reason in a stable order.
+- [ ]
+
+### P3-02.2 · Span normalization: Source, attributes, truncation, classification
+- **What**: `normalize/spans.py`: Source identification (`service.name` + namespace,
+  `unknown_service:*` handling), resource hashing, OTLP attributes → JSON via `store.attrs`, events
+  and links, value truncation **after redaction** (marker + flag, `max_attribute_value_bytes`),
+  size estimate. `normalize/classify.py`: category and `is_genai` from the mapping rules.
+- **REQ / design**: REQ-030.a/b, REQ-031.a/b, REQ-041, Tech Design Flow 1 step 9 (A-07)
+- **Depends on**: P3-01.2, P3-02.1
+- **Done**: raw attributes round-trip; truncated values carry the marker and set the flag; one
+  classification test per rule; generic (non-GenAI) spans keep their raw data.
+- [ ]
+
+### P3-03.1 · LLMCall derivation and token totals
+- **What**: `normalize/llm.py`: provider, request/response model, tokens (incl. cached, cache
+  write, reasoning), finish reasons, params, messages via P3-01.3; DD-012 totals (`usage_source`
+  `llm` / `agent` / `none`, aggregated usage ignored for totals).
+- **REQ / design**: REQ-033.a, REQ-032.d, DD-012
+- **Depends on**: P3-01.3, P3-02.2
+- **Done**: fixtures for spec, OpenInference and legacy LLM spans; agent-span usage only counts
+  when the trace has no LLM spans (DD-012 test).
+- [ ]
+
+### P3-03.2 · ToolCall and Approval derivation
+- **What**: `normalize/tool.py` (name, call ID, type, args, result, error) and
+  `normalize/approval.py`: `reflex_agentkit.approval.*` / `reflex_mcphost.approval.*` vocabulary,
+  PydanticAI deferral → `pending` linked by tool-call ID, MCP elicitation (COULD).
+- **REQ / design**: REQ-033.b/c, DD-010, Tech Design §5.4
+- **Depends on**: P3-02.2
+- **Done**: one fixture per vocabulary and decision value; tool errors from status and
+  `error.type`; approval linked to its tool call.
+- [ ]
+
+### P3-03.3 · GraphNode, Session key, search document, pipeline
+- **What**: `normalize/graph.py` (spec agent/workflow spans, OpenInference `graph.node.*`, LangGraph
+  metadata); Session external ID from the mapping with the A-08 rule (if redaction changed it:
+  `redacted~hex(HMAC(session_key, raw))[:16]`, raw never kept); `normalize/search.py` (search
+  document ≤ 32 KiB, DD-006 normalization applied by the store); `normalize/__init__.normalize_batch`
+  composing the whole pure pipeline into a `NormalizedBatch` plus rejection counts.
+- **REQ / design**: REQ-036.a/c, REQ-073.a, DD-011, Data Model §2.8 (A-08)
+- **Depends on**: P3-03.1, P3-03.2, P3-04.1
+- **Done**: two conversation IDs that redact to the same text stay two Sessions; LangGraph and
+  OpenInference graph fixtures; search document cap; `normalize_batch` is deterministic.
+- [ ]
+
+### P3-04.1 · Redaction presets and rules engine
+- **What**: `ingest/redaction/presets.py` (`secrets`, `email`, `phone`, `credit_card` with Luhn),
+  `rules.py` (pattern and field rules, compile once per rule-set version), `engine.py` (every string
+  leaf of span, resource and event attributes and status message; JSON-string attributes redacted
+  leaf by leaf; `regex` timeout → `[REDACTED:timeout]` fail closed).
+- **REQ / design**: REQ-039.a–d, DD-013, Art. 3
+- **Depends on**: P3-02.1
+- **Done**: positive/negative fixtures per preset; Luhn; a catastrophic pattern times out and
+  redacts; canary: a secret straddling the truncation limit leaves no prefix (A-07).
+- [ ]
+
+### P3-04.2 · Redaction hook, content drop, preview
+- **What**: `redaction/hook.py` (`module:function`, called after the rules; raise → span rejected
+  `redaction_hook_error`), content drop of the content-bearing keys (Tech Design §5.3) when the
+  Project disabled content, `redaction/preview.py` (rule set + sample → redacted sample, for
+  Settings; the only `ingest` module `query` may import).
+- **REQ / design**: REQ-039.e/f, REQ-040.a/b, REQ-172.b
+- **Depends on**: P3-04.1
+- **Done**: hook error rejects only that span; content-off Project stores no content key; preview
+  equals what ingest would store.
+- [ ]
+
+### P3-05.1 · Bundled pricing data
+- **What**: `scripts/update_pricing.py` (dev-time: LiteLLM JSON → `data/pricing.csv`, license
+  checked, `NOTICE` attribution), `ingest/cost.load_bundled_pricing()` and a bootstrap helper that
+  saves it as pricing version 1 (`source="bundled"`) when no version exists.
+- **REQ / design**: REQ-060.a/b, DD-016, Art. 3 (no runtime fetch), Data Model §5 (A-11)
+- **Depends on**: P2-08.2
+- **Done**: CSV parses into valid `PricingEntry` rows (Decimal → nano-USD, no floats); bootstrap is
+  idempotent; no network access at runtime (test with sockets blocked).
+- [ ]
+
+### P3-05.2 · Cost per LLMCall
+- **What**: `ingest/cost.py`: price each LLMCall with `core.pricing` against the engine's pricing
+  snapshot; unpriced → `NULL` + flag; `pricing_version` recorded; cache-write price (COULD).
+- **REQ / design**: REQ-061.a–c, Art. 5, DD-016
+- **Depends on**: P3-03.1, P3-05.1
+- **Done**: matching-order tests (response before request model, exact before glob); integer
+  nano-USD arithmetic only.
+- [ ]
+
+### P3-06.1 · Store: `write_group` and `get_or_create_secret`
+- **What**: protocol + both backends: `write_group(batches)` with one SAVEPOINT per batch, data
+  errors → `BatchRejected`, other errors fail the call, PG deadlock retries the group once; events
+  only for committed batches. `get_or_create_secret("session_key")` in `app_meta`.
+- **REQ / design**: REQ-009.a, API v1.3 §5.1, Tech Design DD-003 (A-04), Data Model §2.1 (A-08)
+- **Depends on**: P2-10.1
+- **Done**: contract test: a group where one batch's Project is deleted mid-flight commits the
+  others and rejects that one; two backends on one PG database get the same secret.
+- [ ]
+
+### P3-06.2 · `ingest.writer` and `WriteQueue`
+- **What**: bounded queue by bytes (default 256 MiB), linger ≤ 50 ms / ≤ 5,000 spans, futures
+  resolved after commit (`WriteResult` / `BatchRejected` / `StorageUnavailable`), commit-latency
+  window (p50 over 5 s) for admission, `ping()` retry with backoff 0.5 → 5 s after an outage.
+- **REQ / design**: REQ-009.a–c, REQ-330, DD-003
+- **Depends on**: P3-06.1
+- **Done**: no future resolves before its commit; queue full → immediate rejection; DB outage →
+  `StorageUnavailable`, then automatic recovery.
+- [ ]
+
+### P3-07.1 · `ingest.engine`: thread, loop, supervisor
+- **What**: dedicated thread with its own loop, `submit()` from other loops
+  (`run_coroutine_threadsafe`), start/stop with drain (`shutdown_grace`), supervisor with restart
+  backoff (max 5 per 10 min, then stay down), readiness flag.
+- **REQ / design**: DD-001, REQ-331 (drain), Tech Design §3.3 error table
+- **Depends on**: P3-06.2
+- **Done**: submit from the main loop resolves after commit; a crash restarts with backoff and
+  stops after 5 in 10 min; stop drains the queue.
+- [ ]
+
+### P3-07.2 · Engine jobs and settings cache
+- **What**: `ingest/jobs.py`: finalizer every minute (Q12), purge schedule under `job_lock`,
+  settings/pricing/session-key snapshots refreshed on `settings_changed` and periodically.
+- **REQ / design**: REQ-032.b/c, REQ-037.c, REQ-092.a, REQ-006.c, DD-007
+- **Depends on**: P3-07.1, P2-09.1, P2-10.2
+- **Done**: fake-clock tests for job cadence; a second job holder skips; a settings change is
+  visible to the normalizer within one refresh.
+- [ ]
+
+### P3-08.1 · Admission: API keys and auth cache
+- **What**: `ingest/admission.py`: key from `X-Agentlens-Key` > `Authorization: Bearer` (gRPC
+  metadata alike), parse `al_<id>_<secret>`, constant-time verify, positive cache ≤ 5 s cleared on
+  `settings_changed`, `touch_api_key` at most once per minute.
+- **REQ / design**: REQ-006.a–c, REQ-320.a, DD-014
+- **Depends on**: P3-07.2
+- **Done**: missing / malformed / unknown / revoked → 401 reason; revoked key rejected within 5 s
+  (fake clock) and immediately after `settings_changed`.
+- [ ]
+
+### P3-08.2 · Limits: token buckets, body caps, overload
+- **What**: `ingest/limits.py`: per-Project request and span token buckets (`Retry-After` ≥ 1 s),
+  Content-Length precheck, streaming gzip with a decompressed cap (zip-bomb safe), overload check
+  (queue bytes, commit latency) → 503 with `overload_retry_after`.
+- **REQ / design**: REQ-007.a–c, REQ-009.b, DD-015
+- **Depends on**: P3-08.1
+- **Done**: bucket math with a fake clock; a 1 GiB zip bomb stops at the cap without allocating
+  it; overload threshold flips 503 on and off.
+- [ ]
+
+### P3-09.1 · OTLP/HTTP routes
+- **What**: `ingest/http.py` (Starlette): `POST /v1/traces`, `/v1/metrics`; `/v1/logs` → 404;
+  protobuf and JSON in, same encoding out; `partialSuccess`; error → status mapping of API §3.3
+  (400/401/413/415/429/503 with `google.rpc.Status`, fixed messages); check order of API §3.3.
+- **REQ / design**: REQ-001, REQ-002, REQ-005.a, REQ-007, REQ-008, REQ-009.b, REQ-010
+- **Depends on**: P3-08.2
+- **Done**: route tests with an in-memory store fake and a real SQLite backend; every row of the
+  API §3.3 table has a test.
+- [ ]
+
+### P3-10.1 · OTLP/gRPC services
+- **What**: `ingest/grpc.py`: `TraceService`, `MetricsService`, `LogsService` → `UNIMPLEMENTED`;
+  gzip; key from metadata; status mapping (`UNAUTHENTICATED`, `RESOURCE_EXHAUSTED` ± `RetryInfo`,
+  `UNAVAILABLE`, `INVALID_ARGUMENT`); port disabled by config.
+- **REQ / design**: REQ-003, REQ-006.b, REQ-007, REQ-008, REQ-009.b
+- **Depends on**: P3-08.2
+- **Done**: tests with the official OTLP gRPC exporter against an ephemeral port; every status
+  row covered.
+- [ ]
+
+### P3-11.1 · Metrics ingestion
+- **What**: `ingest/metrics.py`: GenAI metric allowlist (Tech Design §5.3 "Metrics persisted"),
+  data points → `MetricPoint`, other `gen_ai.*` stored generically, non-GenAI metrics discarded and
+  counted (not rejections), invalid GenAI points in `rejectedDataPoints`.
+- **REQ / design**: REQ-005.a/b, Amendment A2
+- **Depends on**: P3-09.1
+- **Done**: a mixed export stores only GenAI points; counters and histograms both handled;
+  `partialSuccess` counts only invalid GenAI points.
+- [ ]
+
+### P3-12.1 · Property tests: order invariance and idempotency
+- **What**: `tests/property/`: hypothesis permutations, batch splits and duplicates of fixture span
+  sets through `normalize_batch` + `write_group` → identical derived views (snapshot), on SQLite
+  and PG.
+- **REQ / design**: REQ-037.a/b, REQ-038.a, REQ-365
+- **Depends on**: P3-07.1
+- **Done**: property suite green with the CI hypothesis profile on both backends.
+- [ ]
+
+### P3-12.2 · Golden normalizer fixtures
+- **What**: `tests/golden/`: hand-written OTLP/JSON fixtures (missing parent, late root,
+  conflicting session IDs, both dialects present, generic trace, PydanticAI, LangGraph,
+  OpenInference) with expected derived rows; a regeneration flag for intentional changes.
+- **REQ / design**: REQ-032.c, REQ-035.b, REQ-036.c, REQ-131 (data)
+- **Depends on**: P3-03.3
+- **Done**: every fixture's derived rows match the golden files; changing `MAPPING_VERSION`
+  without regenerating fails.
+- [ ]
+
+### P3-13.1 · Integration tests on real endpoints
+- **What**: `tests/integration/`: the engine with HTTP and gRPC on ephemeral ports and a real
+  backend: auth, rate limits, zip bomb, backpressure 503, DB outage → 503 then recovery ≤ 10 s,
+  `BatchRejected` when a Project is deleted mid-ingest (A-04).
+- **REQ / design**: REQ-001…REQ-010, REQ-009.a/b, REQ-330
+- **Depends on**: P3-09.1, P3-10.1
+- **Done**: suite green on SQLite and PG in CI.
+- [ ]
+
+### P3-13.2 · Durability and cross-process tests; phase gate
+- **What**: SIGKILL-after-ack test (subprocess engine, every acknowledged span present after
+  restart); revocation ≤ 5 s across two processes on PG; P3 gate.
+- **REQ / design**: REQ-009.a, REQ-006.c, REQ-004
+- **Depends on**: P3-13.1
+- **Done**: plan P3 Done criteria: ingest + store coverage ≥ 85 %; `mypy --strict` clean; import
+  contracts kept; property, golden and integration suites green in CI.
+- [ ]
+
+**Suggested batches:** (1) P3-01.1, P3-01.2, P3-01.3 · (2) P3-02.1, P3-02.2, P3-04.1 ·
+(3) P3-03.1, P3-03.2, P3-04.2 · (4) P3-03.3, P3-05.1, P3-05.2 · (5) P3-06.1, P3-06.2, P3-07.1 ·
+(6) P3-07.2, P3-08.1, P3-08.2 · (7) P3-09.1, P3-10.1, P3-11.1 · (8) P3-12.1, P3-12.2, P3-13.1,
+P3-13.2.
+
+---
+
+## Phases P4–P10 — to be detailed at phase start
 
 Each phase gets its atomic tasks in a new revision of this file when the previous phase's Done
 criteria are met. The plan tasks, their scope, estimates and dependencies are fixed in the
@@ -645,7 +923,6 @@ criteria are met. The plan tasks, their scope, estimates and dependencies are fi
 
 | Phase | Plan tasks | Detailed when | Prerequisite inputs |
 |---|---|---|---|
-| P3 Ingest | P3-01 … P3-13 | P1 done (P3-01…05 may start alongside P2) | Pinned `SEMCONV_GENAI_COMMIT` chosen in P3-01 |
 | P4 Query | P4-01 … P4-06 | P2-07 done | — |
 | P5 Runtime/CLI | P5-01 … P5-08 | P3-09 done | — |
 | P6 UI | P6-01 … P6-13 | P4-02 done | S1 decisions (P0-06.1) |
@@ -852,3 +1129,4 @@ parallel, on the S2 branch).
 | 1.0 | 2026-10-31 | Ernesto Crespo | Approved (rolling-wave detailing accepted) |
 | 1.0.1 | 2026-10-31 | Ernesto Crespo (with Claude) | Analyze fixes: A-03 (`percentile_disc` in P0-09.2), A-13 (removed [P] from P0-05.1/05.2, P1-02.1/02.2/02.3: shared files), A-15 (new P0-09.3), A-16 (new P0-05.3) |
 | 1.1 | 2026-10-31 | Ernesto Crespo (with Claude) | Phase P2 detailed: 21 atomic tasks, protocol-method ownership table (A-06), protocol return types as `store.records` (A-05, storage side), A-01 multi-writer test (P2-06.2), no pricing seed in `0001_initial` (A-11) |
+| 1.2 | 2026-10-31 | Ernesto Crespo (with Claude) | Phase P3 detailed: 25 atomic tasks in 8 batches; store additions `write_group` / `get_or_create_secret` owned by P3-06.1; Delta `changes/2026-10-p3-ingest-prep/` (A-04, A-07, A-08, A-17) folded into API v1.3, Tech Design v1.4, Data Model v1.2 |
