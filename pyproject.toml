@@ -39,6 +39,11 @@ path = "src/reflex_agentlens/__init__.py"
 [tool.hatch.build.targets.wheel]
 packages = ["src/reflex_agentlens"]
 
+[tool.hatch.build.targets.wheel.hooks.custom]
+# Spike prototype (P0-02.2): exports the Reflex frontend into reflex_agentlens/_frontend/.
+path = "hatch_build.py"
+dependencies = ["reflex>=0.10.1,<0.11", "reflex-silverpoint-react>=0.8.1,<0.9", "reflex-mermaidjs>=0.2.1,<0.3", "pydantic>=2"]
+
 [dependency-groups]
 dev = [
     "pytest>=8",

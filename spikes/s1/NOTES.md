@@ -30,3 +30,17 @@ reflex-silverpoint-react 0.8.1, reflex-mermaidjs 0.2.1.
   component with a local JS module is created). To pin down in P0-05.3 with an audit hook.
 - `reflex export` also writes `reflex.lock/` (bun.lock + package.json: frontend dependency lock,
   committed for reproducibility), `requirements.txt` and `.gitignore` into the rxconfig directory.
+
+## P0-02.2 — build hook (2026-10-31)
+
+- `hatch_build.py` (custom hook) runs the export and force-includes `.web/build/client` as
+  `reflex_agentlens/_frontend/`. `uv build --wheel` → 14 MB wheel, 309 files, ~7 s with a warm Bun cache.
+- **The isolated build env does not have the package installed**: the hook must put `src/` on
+  `PYTHONPATH` for the `reflex export` subprocess, and the hook needs Reflex + UI deps declared as
+  hook `dependencies` in `[tool.hatch.build.targets.wheel.hooks.custom]`.
+- Editable installs (`uv sync`) skip the export (`version == "editable"`), so syncing needs no JS runtime.
+  `AGENTLENS_SKIP_FRONTEND=1` builds a wheel without the frontend (for fast CI jobs).
+- **Open for P7-01:** `uv build` without `--wheel` builds wheel-from-sdist. The sdist must then contain
+  the `_webapp` module, the build rxconfig and `reflex.lock/`, and building from sdist needs Bun/Node on
+  the build machine. Decide: ship sdists that require a JS runtime to build, or build wheels only from
+  the repo (sdist marked as "frontend not included").
