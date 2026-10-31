@@ -166,8 +166,8 @@ venv.bak/
 # Rope project settings
 .ropeproject
 
-# mkdocs/Zensical documentation
-/site
+# mkdocs build output (site/ is a uv workspace member, not build output)
+/site/site/
 
 # mypy
 .mypy_cache/
@@ -218,3 +218,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# reflex-agentlens
+src/reflex_agentlens/_frontend/
+.web/
+.states/
+assets/external/
+agentlens-data/
+*.db
+*.db-wal
+*.db-shm

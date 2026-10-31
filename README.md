@@ -1,2 +1,113 @@
 # reflex-agentlens
-Self-hosted observability for AI agents, built with Reflex. Ingest OpenTelemetry GenAI traces from LangGraph, PydanticAI, OpenAI Agents or any OTLP source and get live run timelines, graph replay, tool-call inspection, token and cost analytics — in pure Python, on your infra. Embed it as a page in your own app or run it standalone.
+
+Self-hosted observability for AI agents, built with [Reflex](https://reflex.dev). Ingest
+OpenTelemetry GenAI traces from LangGraph, PydanticAI, OpenAI Agents or any OTLP source and get
+live run timelines, graph replay, tool-call inspection, token and cost analytics — in pure Python,
+on your infra. Embed it as a page in your own app or run it standalone.
+
+> **Status: pre-alpha, not usable yet.** The v0.1 specification is approved and the feasibility
+> spikes are done; implementation of the foundation (phase P1) has started. Nothing is published
+> on PyPI. See [Roadmap](#roadmap).
+
+## Why
+
+- **Privacy.** Prompts and completions often contain PII/PHI and business data. agentlens keeps
+  them on your machine or your servers. No SaaS, no telemetry sent anywhere.
+- **Small footprint.** One Python process with an embedded SQLite database, or one container plus
+  PostgreSQL. No ClickHouse, Redis, Kafka or object storage.
+- **Agent semantics, not just spans.** Runs, Sessions, LLM calls rendered as conversations, tool
+  calls, approvals, agent graphs and cost — computed from the standard
+  [OpenTelemetry GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/).
+- **Inside your app.** The pages can be mounted in a host Reflex app and reuse its login.
+
+## What v0.1 will do
+
+| Area | Planned capability |
+|---|---|
+| Ingestion | OTLP/HTTP (protobuf and JSON) and OTLP/gRPC for traces and metrics; API keys per project; durable group commit |
+| Normalization | GenAI semconv (current and deprecated attributes) plus PydanticAI, OpenInference and LangSmith dialects; LLM calls, tool calls, approvals, agent graph nodes; redaction before storage |
+| Cost | Versioned pricing table bundled with the package (no runtime fetch); exact decimal costs |
+| Storage | SQLite (default) or PostgreSQL, same schema; retention by age and size; full-text search |
+| UI | Dashboard, Runs, Trace (waterfall, conversation, graph replay), Sessions, Settings; live updates; charts with `reflex-silverpoint-react`, graphs with `reflex-mermaidjs` |
+| Deployment | `uvx reflex-agentlens serve`, a single Docker container, or Docker Compose with PostgreSQL; an embeddable `mount(app, ...)` API |
+
+Planned usage (not available yet):
+
+```bash
+uvx reflex-agentlens serve    # UI + OTLP/HTTP on :8000, OTLP/gRPC on :4317, SQLite under $XDG_DATA_HOME
+
+# then point any OTel-instrumented agent at it
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:8000
+export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer%20<api-key>"
+```
+
+```python
+import reflex as rx
+import reflex_agentlens as agentlens
+
+app = rx.App()
+agentlens.mount(app, auth=my_auth, prefix="/agentlens")  # pages inside your own Reflex app
+```
+
+## How it is built
+
+The project follows **spec-driven design**: specifications live in [`specs/`](specs/) and are
+approved before code is written. Changes to approved specs go through Delta Specs in
+[`changes/`](changes/).
+
+| Document | Content |
+|---|---|
+| [Constitution](specs/constitution.md) | Project principles, stack constraints, licensing, process rules |
+| [PRD](specs/prd/agentlens-v0.1.md) | Requirements with EARS acceptance criteria (`REQ-NNN.x`) |
+| [API Spec](specs/api/agentlens-api-v1.md) | OTLP endpoints, embedding API, CLI, configuration |
+| [Tech Design](specs/technical/agentlens-architecture.md) | Architecture, design decisions (DD-001…023), spike results |
+| [Data Model](specs/data-model/agentlens-schema.md) | Schema for SQLite and PostgreSQL, critical queries |
+| [Implementation Plan](specs/plans/agentlens-phase-1.md) | Phases P0–P10 |
+| [Tasks](specs/tasks/agentlens-tasks.md) | Executable tasks with progress and execution log |
+
+Architecture in one paragraph: a single process runs the Reflex backend (Granian, Starlette
+routes for OTLP/HTTP and health) and a dedicated ingest thread with its own asyncio loop for
+OTLP/gRPC and the durable writer. The frontend is pre-built at release time and shipped inside the
+wheel, so no Node.js or Bun is needed at runtime. Storage uses SQLAlchemy 2.0 Core (async) over
+SQLite or PostgreSQL, and every dashboard aggregate is computed in SQL.
+
+## Repository layout
+
+```
+src/reflex_agentlens/   the package: core, ingest, store, query, components, pages, app, cli
+tests/                  unit, golden, property, contract, integration, smoke, … suites
+site/                   project website (uv workspace member, not published)
+examples/               example instrumented agents (uv workspace member, not published)
+specs/                  approved specifications (current truth)
+changes/                Delta Specs under review
+```
+
+## Development
+
+Requires Python ≥ 3.11 and [uv](https://docs.astral.sh/uv/). All tooling runs through `uv`.
+
+```bash
+uv sync --all-packages        # create .venv with the package, workspace members and dev tools
+uv run pytest                 # tests
+uv run ruff check             # lint
+uv run ruff format --check    # formatting
+uv build                      # sdist + wheel
+uv run reflex-agentlens       # CLI (currently prints the version)
+```
+
+Branches are cut from `develop`; feature work goes in `feat/<task-id>-<slug>` and merges through a
+pull request. Tests cite the requirement they verify (`REQ-NNN.x`).
+
+## Roadmap
+
+| Phase | Content | State |
+|---|---|---|
+| P0 | Spikes: pre-built frontend in the wheel (S1), SQL performance on both backends (S2) | Done — results in Tech Design §11 |
+| P1 | Package skeleton, tooling, CI, `core` | In progress |
+| P2–P4 | Store, ingest, query | Planned |
+| P5–P7 | CLI, UI pages, embedding and standalone app | Planned |
+| P8–P10 | Benchmarks, Docker, docs, site, release | Planned |
+
+## License
+
+[MIT](LICENSE) © Ernesto Crespo
