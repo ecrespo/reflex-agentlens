@@ -184,7 +184,19 @@ CONTENT_KEYS: Final = frozenset(
         PAI_FINAL_RESULT,
     }
 )
-CONTENT_KEY_PREFIXES: Final = (OI_INPUT_MESSAGES + ".", OI_OUTPUT_MESSAGES + ".")
+CONTENT_KEY_PREFIXES: Final = (
+    OI_INPUT_MESSAGES + ".",
+    OI_OUTPUT_MESSAGES + ".",
+    GEN_AI_PROMPT + ".",  # legacy indexed form gen_ai.prompt.<i>.content
+    GEN_AI_COMPLETION + ".",
+    "llm.prompts.",  # OpenInference completions-API prompts
+    "llm.prompt_template.",
+    "llm.tools.",  # tool definitions (JSON schemas, descriptions)
+    "retrieval.documents.",
+    "reranker.input_documents.",
+    "reranker.output_documents.",
+    "embedding.embeddings.",
+)
 
 
 def _collect() -> frozenset[str]:

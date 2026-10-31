@@ -123,7 +123,7 @@ def _as_json(value: Any) -> Any:
     if isinstance(value, str):
         try:
             return json.loads(value)
-        except ValueError:
+        except (ValueError, RecursionError):  # malformed or nested too deep: not JSON for us
             return None
     return value
 
@@ -262,7 +262,7 @@ def params(attrs: Attrs) -> dict[str, Any]:
     return {}
 
 
-_INDEXED = re.compile(r"^(\d+)\.(.+)$")
+_INDEXED = re.compile(r"^([0-9]{1,6})\.(.+)$")  # ASCII, bounded: int() never fails
 
 
 def flat(attrs: Attrs, prefix: str) -> list[dict[str, Any]]:

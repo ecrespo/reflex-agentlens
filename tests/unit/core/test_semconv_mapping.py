@@ -263,3 +263,31 @@ def test_source_types_are_frozen() -> None:
 def test_detect_dialects_without_prefix() -> None:
     attrs = {"agent_name": "a", "session.id": "s", "reflex_agentkit.approval.id": "x", "k": 1}
     assert detect(attrs) == {"pydantic_ai", "openinference", "reflex"}
+
+
+def test_hostile_inputs_do_not_raise() -> None:
+    """Attacker-controlled keys and values: no exception, no huge allocation."""
+    deep = "[" * 100_000 + "]" * 100_000
+    assert resolve({"metadata": deep}, "graph_node_id") is None
+    assert params({"llm.invocation_parameters": deep}) == {}
+    huge_index = {"llm.input_messages." + "9" * 5000 + ".message.role": "user"}
+    assert flat(huge_index, "llm.input_messages") == []
+    arabic_digit = {"llm.input_messages." + chr(0x661) + ".message.role": "user"}
+    assert flat(arabic_digit, "llm.input_messages") == []
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "gen_ai.prompt.0.content",
+        "gen_ai.completion.0.content",
+        "llm.input_messages.0.message.content",
+        "llm.prompts.0",
+        "llm.tools.0.tool.json_schema",
+        "retrieval.documents.0.document.content",
+        "embedding.embeddings.0.embedding.text",
+    ],
+)
+def test_content_prefixes_cover_flattened_forms(key: str) -> None:
+    """REQ-040: every flattened content form is caught by the content-drop prefixes."""
+    assert key.startswith(k.CONTENT_KEY_PREFIXES)
