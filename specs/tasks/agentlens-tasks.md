@@ -45,7 +45,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **Depends on**: —
 - **Done**: `uv sync && uv run pytest && uv run ruff check && uv run ruff format --check && uv build`
   all succeed; `uv run reflex-agentlens` prints `0.1.0.dev0`. Merged into `develop`.
-- [ ]
+- [x] 2026-10-31 · PR #2
 
 ### P0-02.1 · S1a — build-only web app with the real UI dependencies
 - **What**: On `spike/s1-prebuilt`, add `reflex>=0.10.1,<0.11`, `reflex-silverpoint-react>=0.8.1,<0.9`,
@@ -57,7 +57,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **Depends on**: P0-01.1
 - **Done**: `.web/build/client/index.html` exists; the page renders all three elements under
   `reflex run` (dev). Note the bundle size and any export warnings in the spike notes.
-- [ ]
+- [x] 2026-10-31 · spike/s1-prebuilt c2523bd
 
 ### P0-02.2 · S1a — prototype hatchling build hook
 - **What**: `hatch_build.py` custom build hook that runs the export from P0-02.1 and packages
@@ -65,7 +65,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **REQ / design**: DD-002 (prototype of P7-01)
 - **Depends on**: P0-02.1
 - **Done**: `uv build` then `unzip -l dist/*.whl | grep _frontend/index.html` prints a match.
-- [ ]
+- [x] 2026-10-31 · spike/s1-prebuilt b51ef67
 
 ### P0-03.1 · S1b — boot the installed wheel with no JS runtime
 - **What**: `spikes/s1/boot.py` (spike branch) implementing the DD-002 runtime recipe: copy the bundle
@@ -78,7 +78,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **Done**: in that venv, `command -v node bun` finds nothing; `GET /` → 200; a Playwright page load
   shows the chart, the graph and the DTO list rendered from state (websocket `/_event` working).
   Record time from process start to first 200 (input for REQ-210.b).
-- [ ]
+- [x] 2026-10-31 · spike/s1-prebuilt eb69011
 
 ### P0-03.2 · S1b — baked API URL / port investigation
 - **What**: Find where the compiled frontend gets its backend URL (`env.json` fetched at runtime vs.
@@ -89,7 +89,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **Done**: a written finding with evidence (file path and the request that loads it). Either the
   app works on port 9000 after the rewrite (A6 not needed), or the failure mode is documented and A6
   is proposed.
-- [ ]
+- [x] 2026-10-31 · spike/s1-prebuilt eb69011
 
 ### P0-04.1 · S1c — ingest thread with grpc.aio next to Granian
 - **What**: In the spike boot script, start a dedicated thread running its own asyncio loop with a
@@ -162,7 +162,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **Depends on**: P0-01.1
 - **Done**: `create_all` succeeds on both; `PRAGMA compile_options` shows FTS5 and the SQLite version
   is ≥ 3.43; PG version logged.
-- [ ]
+- [x] 2026-10-31 · spike/s2-sql 6b1d93e
 
 ### P0-07.2 · S2a — synthetic dataset generator
 - **What**: Seeded generator producing Runs of ~20 spans (agent root, LLM calls with tokens and cost,
@@ -554,7 +554,10 @@ the matrix). No requirement is deferred at this point.
 
 | Date | Tasks | Result | Notes |
 |---|---|---|---|
-| | | | |
+| 2026-10-31 | P0-01.1 | Done | Scaffold, `uv sync`, CLI stub, 3 unit tests (PR #2) |
+| 2026-10-31 | P0-02.1, P0-02.2 | Done | Export works; 28 MB bundle (Mermaid icons/ZenUML/ELK); telemetry defaults on; hook needs `PYTHONPATH=src`; sdist question open for P7-01 (`spikes/s1/NOTES.md`) |
+| 2026-10-31 | P0-03.1, P0-03.2 | Done | Wheel boots with no JS runtime; no foreign requests; baked `localhost:8000` rewritten per port (A6 not needed); start→200 6.3 s; port-in-use gives raw Granian traceback → CLI pre-check (REQ-200.c) |
+| 2026-10-31 | P0-07.1 | Done | SQLite 3.51.0 + FTS5 contentless_delete, PG 18.6; one MetaData via `with_variant`/`ddl_if`; FTS5 shadow tables must be excluded from Alembic autogenerate (`spikes/s2/NOTES.md`) |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).
