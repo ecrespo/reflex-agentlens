@@ -224,3 +224,5 @@ __marimo__/
 .states/
 spikes/**/export.log
 src/reflex_agentlens/_frontend/
+spikes/**/requirements.txt
+spikes/s1/.gitignore

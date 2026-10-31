@@ -24,3 +24,9 @@ reflex-silverpoint-react 0.8.1, reflex-mermaidjs 0.2.1.
   reactrouter.com, …). Potential runtime fetches: `cdn.jsdelivr.net` and fontawesome (Mermaid icon
   packs / Font Awesome), both disabled by `font_awesome=False, icon_packs=[]`. Verified at runtime
   in P0-05.2.
+- After the first Reflex runs, an **empty `assets/external/` directory appeared in the repo root**
+  (cwd at the time). A plain `import reflex, reflex_silverpoint_react, reflex_mermaidjs` in a clean
+  directory writes nothing, so it comes from another Reflex code path (likely asset resolution when a
+  component with a local JS module is created). To pin down in P0-05.3 with an audit hook.
+- `reflex export` also writes `reflex.lock/` (bun.lock + package.json: frontend dependency lock,
+  committed for reproducibility), `requirements.txt` and `.gitignore` into the rxconfig directory.
