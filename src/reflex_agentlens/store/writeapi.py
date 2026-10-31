@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import Any, TypeVar
 
-from reflex_agentlens.store import admin, metrics, settings
+from reflex_agentlens.store import admin, maintenance, metrics, settings
 from reflex_agentlens.store.readapi import ReadMethods
 from reflex_agentlens.store.records import (
     ApiKeyRecord,
@@ -25,8 +25,13 @@ from reflex_agentlens.store.records import (
     Project,
     ProjectPatch,
     ProjectScope,
+    RebuildReport,
+    RebuildScope,
     RedactionRuleSet,
+    RunKey,
     SavedFilter,
+    SpanDeriver,
+    TimeRange,
     UnpricedModel,
 )
 
@@ -39,6 +44,7 @@ class BackendMethods(ReadMethods):
     """Mixin: reads, aggregates, metric points and settings storage."""
 
     _clock: Callable[[], int]
+    finalization_window_ns: int
 
     async def _on_writer(self, fn: Callable[..., _R], *args: Any) -> _R:  # pragma: no cover
         raise NotImplementedError
@@ -118,3 +124,52 @@ class BackendMethods(ReadMethods):
 
     async def delete_filter(self, filter_id: str) -> None:
         await self._on_writer(settings.delete_filter, filter_id)
+
+    # ── derived-view maintenance (P2-08.3) ───────────────────────────────────────────────────
+
+    async def finalize_stale_runs(self, older_than_ns: int, limit: int) -> list[RunKey]:
+        """Q12 (REQ-032.b): one transaction; Runs locked by another writer are skipped."""
+        return await self._on_writer(
+            maintenance.finalize_stale_runs, older_than_ns, limit, self._clock()
+        )
+
+    async def rebuild(
+        self,
+        scope: RebuildScope,
+        deriver: SpanDeriver,
+        pricing: PricingVersion,
+        *,
+        batch_runs: int = 200,
+    ) -> RebuildReport:
+        """REQ-042: batches of ``batch_runs`` Runs, one transaction each, so ingest continues."""
+        report, after = RebuildReport(), None
+        while True:
+            step, after = await self._on_writer(
+                maintenance.rebuild_batch, scope, deriver, pricing, after, batch_runs,
+                self._clock(), self.finalization_window_ns,
+            )  # fmt: skip
+            report += step
+            if after is None:
+                break
+        await self._on_writer(maintenance.update_mapping_version_min)
+        return report
+
+    async def recompute_costs(
+        self,
+        project_id: str,
+        time_range: TimeRange,
+        pricing: PricingVersion,
+        *,
+        batch_runs: int = 200,
+    ) -> int:
+        """REQ-062.a: re-price the Project's LLM calls in the range; returns calls updated."""
+        project_pk = await self._on_read_pool(admin._project_pk, project_id)
+        total, after = 0, None
+        while True:
+            n, after = await self._on_writer(
+                maintenance.recompute_costs_batch, project_pk, time_range, pricing, after,
+                batch_runs, self._clock(), self.finalization_window_ns,
+            )  # fmt: skip
+            total += n
+            if after is None:
+                return total

@@ -33,7 +33,15 @@ from reflex_agentlens.store.dialect import SqlDialectOps, ops_for
 from reflex_agentlens.store.recompute import recompute_runs
 from reflex_agentlens.store.records import NormalizedBatch, NormalizedSpan, RunKey, SourceKey
 
-__all__ = ["MAX_BIND_PARAMS", "WriteOutcome", "project_pk_of", "upsert_sources", "write_batch"]
+__all__ = [
+    "MAX_BIND_PARAMS",
+    "WriteOutcome",
+    "insert_derived",
+    "project_pk_of",
+    "upsert_sessions",
+    "upsert_sources",
+    "write_batch",
+]
 
 MAX_BIND_PARAMS = 32_000  # SQLite's limit is 32,766; PostgreSQL's 65,535
 T = TypeVar("T")
@@ -134,7 +142,7 @@ def _upsert_resources(
     return out
 
 
-def _upsert_sessions(
+def upsert_sessions(
     conn: Connection, ops: SqlDialectOps, project_pk: int, spans: list[NormalizedSpan], now_ns: int
 ) -> None:
     bounds: dict[str, tuple[int, int]] = {}
@@ -233,42 +241,13 @@ def _insert_many(conn: Connection, table: Table, rows: list[dict[str, Any]]) -> 
         conn.execute(table.insert(), rows)
 
 
-def write_batch(
-    conn: Connection, batch: NormalizedBatch, *, now_ns: int, window_ns: int
-) -> WriteOutcome:
-    """Persist ``batch`` in the caller's transaction; see the module docstring."""
-    ops = ops_for(conn.dialect.name)
-    project_pk = project_pk_of(conn, batch.project_id)
-    spans = _dedupe(batch.spans)
-    if not spans:
-        return WriteOutcome(0, 0, [])
-
-    source_pks = upsert_sources(
-        conn, ops, project_pk, ((sp.source, sp.start_ns, sp.end_ns) for sp in spans)
-    )
-    resource_pks = _upsert_resources(conn, ops, project_pk, spans)
-    _upsert_sessions(conn, ops, project_pk, spans, now_ns)
-    run_pks = _lock_run_stubs(conn, ops, project_pk, spans, now_ns)
-
-    by_key = {(run_pks[sp.trace_id], sp.span_id): sp for sp in spans}
-    rows = [
-        _span_row(sp, project_pk, rp, source_pks[sp.source], resource_pks[sp.resource.attrs_hash])
-        for (rp, _), sp in by_key.items()
-    ]
-    t = s.spans
-    returned: list[tuple[int, int, bytes]] = []
-    for chunk in _chunks(rows, len(rows[0])):
-        stmt = (
-            ops.insert(t)
-            .values(list(chunk))
-            .on_conflict_do_nothing(index_elements=[t.c.run_pk, t.c.span_id])
-            .returning(t.c.pk, t.c.run_pk, t.c.span_id)
-        )
-        returned.extend((pk, rp, bytes(sid)) for pk, rp, sid in conn.execute(stmt))
-
+def insert_derived(
+    conn: Connection, ops: SqlDialectOps, items: Sequence[tuple[int, int, int, NormalizedSpan]]
+) -> None:
+    """Per-span derived rows and normalized search documents for ``(span_pk, run_pk,
+    project_pk, span)`` items (API §5.1 step 3; also used by ``rebuild``)."""
     llm, tool, appr, node, docs = [], [], [], [], []
-    for pk, rp, sid in returned:
-        sp = by_key[(rp, sid)]
+    for pk, rp, project_pk, sp in items:
         keys = {"span_pk": pk, "run_pk": rp, "project_pk": project_pk}
         if sp.llm_call is not None:
             llm.append(keys | asdict(sp.llm_call))
@@ -287,6 +266,42 @@ def write_batch(
     _insert_many(conn, s.graph_nodes, node)
     if docs:
         conn.execute(ops.search_insert(), docs)
+
+
+def write_batch(
+    conn: Connection, batch: NormalizedBatch, *, now_ns: int, window_ns: int
+) -> WriteOutcome:
+    """Persist ``batch`` in the caller's transaction; see the module docstring."""
+    ops = ops_for(conn.dialect.name)
+    project_pk = project_pk_of(conn, batch.project_id)
+    spans = _dedupe(batch.spans)
+    if not spans:
+        return WriteOutcome(0, 0, [])
+
+    source_pks = upsert_sources(
+        conn, ops, project_pk, ((sp.source, sp.start_ns, sp.end_ns) for sp in spans)
+    )
+    resource_pks = _upsert_resources(conn, ops, project_pk, spans)
+    upsert_sessions(conn, ops, project_pk, spans, now_ns)
+    run_pks = _lock_run_stubs(conn, ops, project_pk, spans, now_ns)
+
+    by_key = {(run_pks[sp.trace_id], sp.span_id): sp for sp in spans}
+    rows = [
+        _span_row(sp, project_pk, rp, source_pks[sp.source], resource_pks[sp.resource.attrs_hash])
+        for (rp, _), sp in by_key.items()
+    ]
+    t = s.spans
+    returned: list[tuple[int, int, bytes]] = []
+    for chunk in _chunks(rows, len(rows[0])):
+        stmt = (
+            ops.insert(t)
+            .values(list(chunk))
+            .on_conflict_do_nothing(index_elements=[t.c.run_pk, t.c.span_id])
+            .returning(t.c.pk, t.c.run_pk, t.c.span_id)
+        )
+        returned.extend((pk, rp, bytes(sid)) for pk, rp, sid in conn.execute(stmt))
+
+    insert_derived(conn, ops, [(pk, rp, project_pk, by_key[(rp, sid)]) for pk, rp, sid in returned])
 
     affected = sorted({rp for _, rp, _ in returned})
     recompute_runs(conn, affected, now_ns=now_ns, window_ns=window_ns)

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Generic, Literal, TypeVar
+from typing import Generic, Literal, Protocol, TypeVar
 
 from reflex_agentlens.store.attrs import JsonValue
 
@@ -480,6 +480,43 @@ class MetricPoint:
     sum: float | None = None
     bucket_counts: list[int] | None = None
     explicit_bounds: list[float] | None = None
+
+
+# ── derived-view maintenance (P2-08.3; REQ-032.b, REQ-042, REQ-062) ─────────────────────────
+
+
+@dataclass(frozen=True, slots=True)
+class RebuildScope:
+    """Which Runs a rebuild visits: all Projects (``None``) or some; optionally only Runs with
+    activity at or after ``since_ns`` (CLI ``rebuild [--project P] [--since T]``)."""
+
+    project_ids: ProjectScope | None = None
+    since_ns: int | None = None
+
+
+class SpanDeriver(Protocol):
+    """Re-derives one stored span with the current mapping table and pricing (REQ-042.a).
+
+    The span is given as stored: raw fields plus the previously derived ones (``search_doc`` is
+    ``None``, documents are not kept raw). The result keeps identity, times and raw fields and
+    carries the new derived fields, derived rows and search document.
+    """
+
+    def __call__(self, span: NormalizedSpan, pricing: PricingVersion, /) -> NormalizedSpan: ...
+
+
+@dataclass(frozen=True, slots=True)
+class RebuildReport:
+    runs_scanned: int = 0
+    spans_rederived: int = 0
+    runs_changed: int = 0
+
+    def __add__(self, other: RebuildReport) -> RebuildReport:
+        return RebuildReport(
+            self.runs_scanned + other.runs_scanned,
+            self.spans_rederived + other.spans_rederived,
+            self.runs_changed + other.runs_changed,
+        )
 
 
 # ── reads defined by the API itself ──────────────────────────────────────────────────────────

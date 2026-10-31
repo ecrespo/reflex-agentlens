@@ -19,6 +19,7 @@ Implemented so far:
 - P2-08.2: ``save_pricing``, ``list_pricing_versions``, ``get_pricing``, ``list_unpriced_models``,
   ``save_redaction_rules``, ``get_ingest_settings``, ``list_saved_filters``, ``save_filter``,
   ``delete_filter``
+- P2-08.3: ``finalize_stale_runs``, ``rebuild``, ``recompute_costs``
 - P2-08.1: ``list_projects``, ``create_project``, ``update_project``, ``delete_project``,
   ``create_api_key``, ``list_api_keys``, ``revoke_api_key``, ``resolve_api_key``, ``touch_api_key``
 """
@@ -52,6 +53,8 @@ from reflex_agentlens.store.records import (
     Project,
     ProjectPatch,
     ProjectScope,
+    RebuildReport,
+    RebuildScope,
     RedactionRuleSet,
     RunCursor,
     RunKey,
@@ -65,6 +68,7 @@ from reflex_agentlens.store.records import (
     SessionSummary,
     SourceUsageRow,
     SourceView,
+    SpanDeriver,
     SpanRaw,
     TimeRange,
     TimeSeries,
@@ -230,3 +234,28 @@ class StorageBackend(Protocol):
 
     async def delete_filter(self, filter_id: str) -> None:
         """``NotFound`` when the filter does not exist."""
+
+    # ── derived views (P2-08.3) ──────────────────────────────────────────────────────────────
+
+    async def finalize_stale_runs(self, older_than_ns: int, limit: int) -> list[RunKey]:
+        """Q12: ``in_progress`` Runs silent since before ``older_than_ns`` → ``incomplete``."""
+
+    async def rebuild(
+        self,
+        scope: RebuildScope,
+        deriver: SpanDeriver,
+        pricing: PricingVersion,
+        *,
+        batch_runs: int = 200,
+    ) -> RebuildReport:
+        """REQ-042: re-derive spans and recompute Runs/Sessions in bounded batches."""
+
+    async def recompute_costs(
+        self,
+        project_id: str,
+        time_range: TimeRange,
+        pricing: PricingVersion,
+        *,
+        batch_runs: int = 200,
+    ) -> int:
+        """REQ-062.a: re-price LLM calls with ``pricing``; Run and Session costs follow."""
