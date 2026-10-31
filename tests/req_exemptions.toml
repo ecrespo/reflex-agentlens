@@ -1,0 +1,4 @@
+# MUST criteria of the PRD that no test cites, each with the reason (REQ-362.a).
+# Format: "REQ-NNN.x" = "reason". Keep this list short and justified; reviewed at P10-02.
+
+[exemptions]

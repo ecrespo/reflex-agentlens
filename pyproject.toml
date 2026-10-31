@@ -81,7 +81,7 @@ members = ["site", "examples"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-src = ["src", "tests"]
+src = ["src", "tests", "scripts"]
 # Specs are documentation; their code blocks are illustrative, not formatted source.
 extend-exclude = ["specs", "changes"]
 
@@ -92,10 +92,11 @@ select = ["E", "F", "W", "I", "UP", "B", "S", "T20", "C4", "SIM", "PT", "ASYNC",
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S603"]
 "src/reflex_agentlens/cli/**" = ["T20"]
+"scripts/**" = ["T20"]
 
 [tool.mypy]
 python_version = "3.11"
-files = ["src/reflex_agentlens", "tests"]
+files = ["src/reflex_agentlens", "tests", "scripts"]
 mypy_path = "src"
 strict = true
 warn_unreachable = true
