@@ -10,13 +10,30 @@ Implemented so far:
 - P2-05.1 / P2-06.1: ``open``, ``close``, ``ping``
 - P2-02.2: ``schema_status``, ``migrate``
 - P2-05.2 / P2-06.1: ``write_batch``
+- P2-07.1: ``list_runs``, ``find_runs_by_trace_id``, ``get_trace``, ``get_span_raw``,
+  ``list_llm_calls``, ``list_sources``, ``distinct_values``
 """
 
 from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from reflex_agentlens.store.records import NormalizedBatch, SchemaStatus, WriteResult
+from reflex_agentlens.store.records import (
+    FacetField,
+    LLMCallView,
+    NormalizedBatch,
+    Page,
+    ProjectScope,
+    RunKey,
+    RunQuery,
+    RunSummary,
+    SchemaStatus,
+    SourceView,
+    SpanRaw,
+    TimeRange,
+    TraceDetail,
+    WriteResult,
+)
 
 __all__ = ["StorageBackend"]
 
@@ -46,3 +63,28 @@ class StorageBackend(Protocol):
 
     async def write_batch(self, batch: NormalizedBatch) -> WriteResult:
         """Persist one normalized batch in one transaction (API §5.1)."""
+
+    # ── reads: runs and traces (P2-07.1) ─────────────────────────────────────────────────────
+
+    async def list_runs(self, query: RunQuery) -> Page[RunSummary]:
+        """Q1-Q3: filtered, keyset-paginated Runs (REQ-100, REQ-101); empty scope → empty."""
+
+    async def find_runs_by_trace_id(self, scope: ProjectScope, trace_id: bytes) -> list[RunKey]:
+        """Q4: every Run with this trace ID inside the scope (REQ-103.d)."""
+
+    async def get_trace(self, key: RunKey) -> TraceDetail | None:
+        """Q5: the Run and its spans ordered by (start, span_id) (REQ-103.a)."""
+
+    async def get_span_raw(self, key: RunKey, span_id: bytes) -> SpanRaw | None:
+        """Q5b: raw attributes, resource, events and links of one span (REQ-151.e)."""
+
+    async def list_llm_calls(self, key: RunKey) -> list[LLMCallView]:
+        """LLM calls of one Run with raw attributes/events for message rendering (REQ-104)."""
+
+    async def list_sources(self, scope: ProjectScope) -> list[SourceView]:
+        """Sources of the scoped Projects (REQ-031.c)."""
+
+    async def distinct_values(
+        self, scope: ProjectScope, field: FacetField, time_range: TimeRange, limit: int = 100
+    ) -> list[str]:
+        """Sorted distinct facet values for filter pickers (REQ-101)."""

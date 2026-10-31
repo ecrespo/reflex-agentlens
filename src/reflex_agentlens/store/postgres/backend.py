@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from reflex_agentlens.core.errors import StorageUnavailable
 from reflex_agentlens.core.timeutil import now_ns
 from reflex_agentlens.store import migrate as migrations
+from reflex_agentlens.store.reads import ReadMethods
 from reflex_agentlens.store.records import NormalizedBatch, SchemaStatus, WriteResult
 from reflex_agentlens.store.sqlite.backend import DEFAULT_WINDOW_NS
 from reflex_agentlens.store.writepath import WriteOutcome, write_batch
@@ -42,7 +43,7 @@ def _sqlstate(exc: BaseException) -> str | None:
     return getattr(orig, "sqlstate", None)
 
 
-class PostgresBackend:
+class PostgresBackend(ReadMethods):
     """``StorageBackend`` on PostgreSQL ≥ 15 (REQ-072)."""
 
     def __init__(

@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from reflex_agentlens.core.errors import StorageUnavailable
 from reflex_agentlens.core.timeutil import NS_PER_S, now_ns
 from reflex_agentlens.store import migrate as migrations
+from reflex_agentlens.store.reads import ReadMethods
 from reflex_agentlens.store.records import NormalizedBatch, SchemaStatus, WriteResult
 from reflex_agentlens.store.writepath import write_batch
 
@@ -63,7 +64,7 @@ def _begin_immediate(conn: Any) -> None:
     conn.exec_driver_sql("BEGIN IMMEDIATE")
 
 
-class SqliteBackend:
+class SqliteBackend(ReadMethods):
     """``StorageBackend`` on one SQLite file (REQ-071)."""
 
     def __init__(

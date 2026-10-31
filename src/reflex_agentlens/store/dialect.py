@@ -15,8 +15,20 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
-from sqlalchemy import ColumnElement, Table, bindparam, func, select, text
+from sqlalchemy import (
+    Boolean,
+    ColumnElement,
+    Table,
+    Text,
+    and_,
+    bindparam,
+    cast,
+    func,
+    select,
+    text,
+)
 from sqlalchemy.dialects import postgresql, sqlite
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import Executable
 
 from reflex_agentlens.core.search import search_tokens
@@ -29,6 +41,14 @@ __all__ = [
     "ops_for",
     "percentile_rank",
 ]
+
+
+_SQLITE_JSON_TYPES: dict[type, tuple[str, ...]] = {
+    str: ("text",),
+    bool: ("true", "false"),
+    int: ("integer",),
+    float: ("real", "integer"),
+}
 
 
 def percentile_rank(p: float, n: int) -> int:
@@ -91,6 +111,14 @@ class SqlDialectOps:
         """
         raise NotImplementedError
 
+    def json_has(self, column: ColumnElement[Any], key: str) -> ColumnElement[bool]:
+        """``column`` (a JSON object) has the top-level ``key`` (bound)."""
+        raise NotImplementedError
+
+    def json_equals(self, column: ColumnElement[Any], key: str, value: Any) -> ColumnElement[bool]:
+        """Top-level member ``key`` equals the JSON scalar ``value`` (both bound)."""
+        raise NotImplementedError
+
     # ── full-text search (DD-006, REQ-325.b) ─────────────────────────────────────────────────
 
     def fts_query(self, user_text: str) -> FtsQuery | None:
@@ -137,6 +165,22 @@ class SqliteOps(SqlDialectOps):
             each = func.json_each(column).table_valued("key", "value").alias("je")
             return select(each.c.value).where(each.c.key == bindparam(None, key)).scalar_subquery()
         return func.json_extract(column, bindparam(None, f'$."{key}"'))
+
+    def _path(self, key: str) -> Any:
+        if '"' in key or "\\" in key:
+            raise ValueError("attribute key cannot contain quotes or backslashes")
+        return bindparam(None, f'$."{key}"')
+
+    def json_has(self, column: ColumnElement[Any], key: str) -> ColumnElement[bool]:
+        return func.json_type(column, self._path(key)).is_not(None)
+
+    def json_equals(self, column: ColumnElement[Any], key: str, value: Any) -> ColumnElement[bool]:
+        # json_extract yields SQL values: text, integer, real, 0/1 for booleans.
+        bound = int(value) if isinstance(value, bool) else value
+        return and_(
+            func.json_type(column, self._path(key)).in_(_SQLITE_JSON_TYPES[type(value)]),
+            func.json_extract(column, self._path(key)) == bindparam(None, bound),
+        )
 
     def fts_query(self, user_text: str) -> FtsQuery | None:
         tokens = search_tokens(user_text)
@@ -193,6 +237,15 @@ class PostgresOps(SqlDialectOps):
 
     def json_get(self, column: ColumnElement[Any], key: str) -> ColumnElement[Any]:
         return column.op("->>")(bindparam(None, key))
+
+    def json_has(self, column: ColumnElement[Any], key: str) -> ColumnElement[bool]:
+        return func.jsonb_exists(column, bindparam(None, key), type_=Boolean)
+
+    def json_equals(self, column: ColumnElement[Any], key: str, value: Any) -> ColumnElement[bool]:
+        doc = func.jsonb_build_object(
+            cast(bindparam(None, key), Text), cast(bindparam(None, json.dumps(value)), JSONB)
+        )
+        return column.op("@>", return_type=Boolean)(doc)
 
     def fts_query(self, user_text: str) -> FtsQuery | None:
         tokens = search_tokens(user_text)
