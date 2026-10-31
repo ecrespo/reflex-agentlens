@@ -36,7 +36,10 @@ class SpikeState(rx.State):
     @rx.event
     def bump(self) -> None:
         self.clicks += 1
-        self.runs = [*self.runs, RunRow(trace_id=f"new{self.clicks}", agent="x", tokens=1, status="ok")]
+        self.runs = [
+            *self.runs,
+            RunRow(trace_id=f"new{self.clicks}", agent="x", tokens=1, status="ok"),
+        ]
 
     @rx.var
     def chart_rows(self) -> list[dict[str, str | int]]:
