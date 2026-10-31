@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Generic, Literal, TypeVar
+from typing import Generic, Literal, Protocol, TypeVar
 
 from reflex_agentlens.store.attrs import JsonValue
 
@@ -86,6 +86,7 @@ ApprovalDecision = Literal["approved", "rejected", "edited", "timeout", "pending
 PricingSource = Literal["bundled", "editor", "csv"]
 MetricKind = Literal["sum", "gauge", "histogram"]
 PurgeTrigger = Literal["scheduled", "manual"]
+JobName = Literal["retention", "finalizer", "rebuild", "recompute_costs", "bootstrap"]
 ChangeKind = Literal["spans_committed", "runs_finalized", "purged", "settings_changed"]
 
 JsonObject = dict[str, JsonValue]
@@ -269,6 +270,16 @@ class PricingVersion:
 
 
 @dataclass(frozen=True, slots=True)
+class UnpricedModel:
+    """A model seen in unpriced LLM calls (REQ-171.b)."""
+
+    provider: str
+    model: str
+    calls: int
+    last_seen_ns: int
+
+
+@dataclass(frozen=True, slots=True)
 class SavedFilter:
     id: str
     project_id: str
@@ -286,6 +297,17 @@ class NewSavedFilter:
     name: str
     query: str
     created_by: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class StorageUsage:
+    """REQ-173.a: ``estimated_bytes`` is what the size limit (REQ-091) is compared with;
+    ``physical_bytes`` is the database's size on disk (SQLite file pages / PG relations)."""
+
+    estimated_bytes: int
+    physical_bytes: int | None
+    runs: int
+    spans: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -470,6 +492,43 @@ class MetricPoint:
     sum: float | None = None
     bucket_counts: list[int] | None = None
     explicit_bounds: list[float] | None = None
+
+
+# ── derived-view maintenance (P2-08.3; REQ-032.b, REQ-042, REQ-062) ─────────────────────────
+
+
+@dataclass(frozen=True, slots=True)
+class RebuildScope:
+    """Which Runs a rebuild visits: all Projects (``None``) or some; optionally only Runs with
+    activity at or after ``since_ns`` (CLI ``rebuild [--project P] [--since T]``)."""
+
+    project_ids: ProjectScope | None = None
+    since_ns: int | None = None
+
+
+class SpanDeriver(Protocol):
+    """Re-derives one stored span with the current mapping table and pricing (REQ-042.a).
+
+    The span is given as stored: raw fields plus the previously derived ones (``search_doc`` is
+    ``None``, documents are not kept raw). The result keeps identity, times and raw fields and
+    carries the new derived fields, derived rows and search document.
+    """
+
+    def __call__(self, span: NormalizedSpan, pricing: PricingVersion, /) -> NormalizedSpan: ...
+
+
+@dataclass(frozen=True, slots=True)
+class RebuildReport:
+    runs_scanned: int = 0
+    spans_rederived: int = 0
+    runs_changed: int = 0
+
+    def __add__(self, other: RebuildReport) -> RebuildReport:
+        return RebuildReport(
+            self.runs_scanned + other.runs_scanned,
+            self.spans_rederived + other.spans_rederived,
+            self.runs_changed + other.runs_changed,
+        )
 
 
 # ── reads defined by the API itself ──────────────────────────────────────────────────────────
