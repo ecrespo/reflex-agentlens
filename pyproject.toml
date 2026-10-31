@@ -1,0 +1,60 @@
+[project]
+name = "reflex-agentlens"
+dynamic = ["version"]
+description = "Self-hosted observability for AI agents, built with Reflex: OpenTelemetry GenAI traces, run timelines, graph replay, token and cost analytics."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Ernesto Crespo" }]
+requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Monitoring",
+]
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/ecrespo/reflex-agentlens"
+
+[project.scripts]
+reflex-agentlens = "reflex_agentlens.cli.main:main"
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/reflex_agentlens/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/reflex_agentlens"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.8",
+]
+
+[tool.uv.workspace]
+members = []
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "S", "T20"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S603"]
+"src/reflex_agentlens/cli/**" = ["T20"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
