@@ -7,7 +7,8 @@ on your infra. Embed it as a page in your own app or run it standalone.
 
 > **Status: pre-alpha, not usable yet.** The v0.1 specification is approved, the feasibility
 > spikes are done and the foundation (phase P1: tooling, CI and the `core` package) is built.
-> Storage (P2) is next. Nothing is published on PyPI. See [Roadmap](#roadmap).
+> Storage (P2) is in progress: the schema, the attribute codec and the Alembic migrations for
+> SQLite and PostgreSQL are in review. Nothing is published on PyPI. See [Roadmap](#roadmap).
 
 ## Why
 
@@ -99,6 +100,14 @@ uv build                      # sdist + wheel
 uv run reflex-agentlens       # CLI (currently prints the version)
 ```
 
+Tests marked `pg` run only when `AGENTLENS_TEST_PG_URL` points at a PostgreSQL ≥ 15 server; each
+test works in its own throwaway schema:
+
+```bash
+docker run -d --name agentlens-pg -e POSTGRES_PASSWORD=postgres -p 127.0.0.1:5432:5432 postgres:18
+AGENTLENS_TEST_PG_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/postgres uv run pytest
+```
+
 Branches are cut from `develop`; feature work goes in `feat/<task-id>-<slug>` and merges through a
 pull request. Tests cite the requirement they verify (`REQ-NNN.x`). See [CONTRIBUTING.md](CONTRIBUTING.md) for the
 full workflow and [AGENTS.md](AGENTS.md) for coding-agent guidance.
@@ -113,7 +122,7 @@ every pull request.
 |---|---|---|
 | P0 | Spikes: pre-built frontend in the wheel (S1), SQL performance on both backends (S2) | Done — results in Tech Design §11 |
 | P1 | Package skeleton, quality gates, CI, `core` (errors, IDs, time, money, API keys, config, logging) | Done — in review |
-| P2 | Store: schema and migrations on SQLite and PostgreSQL, write path, contract tests | Next |
+| P2 | Store: schema and migrations on SQLite and PostgreSQL, write path, contract tests | In progress (schema and migrations in review) |
 | P3–P4 | Ingest, query | Planned |
 | P5–P7 | CLI, UI pages, embedding and standalone app | Planned |
 | P8–P10 | Benchmarks, Docker, docs, site, release | Planned |
