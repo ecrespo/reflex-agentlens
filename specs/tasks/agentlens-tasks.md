@@ -662,7 +662,7 @@ first or in the same commit (Art. 8). Branches: `feat/P3-<nn>-<slug>` from `deve
 - **Depends on**: P1-06.1
 - **Done**: unit test asserts the pins (40-hex SHA) and that every key referenced by the mapping
   table is a constant; README/Tasks record the pinned commit.
-- [ ]
+- [x] 2026-10-31 · PR #17
 
 ### P3-01.2 · Declarative mapping table and dialect resolution
 - **What**: `mapping.py`: `MAPPING_VERSION = 1`; one table of `Field → (Source, …)` in priority
@@ -673,7 +673,7 @@ first or in the same commit (Art. 8). Branches: `feat/P3-<nn>-<slug>` from `deve
 - **Depends on**: P3-01.1
 - **Done**: one table-driven test per mapping row and per classification rule; a both-dialects
   fixture resolves to the spec value; a test renders the table to Markdown (input for P9-01).
-- [ ]
+- [x] 2026-10-31 · PR #17
 
 ### P3-01.3 · Messages normalizer
 - **What**: `messages.py`: attribute form (`gen_ai.input/output.messages`, system instructions),
@@ -685,7 +685,7 @@ first or in the same commit (Art. 8). Branches: `feat/P3-<nn>-<slug>` from `deve
 - **Depends on**: P3-01.2
 - **Done**: the same conversation in each of the four forms normalizes to equal `Message` lists;
   unknown part types land in `other` with their JSON.
-- [ ]
+- [x] 2026-10-31 · PR #17
 
 ### P3-02.1 · Decode and validate
 - **What**: `ingest/decode.py`: `ExportTraceServiceRequest` / `ExportMetricsServiceRequest` from
@@ -1095,6 +1095,8 @@ the matrix). No requirement is deferred at this point.
 | 2026-10-31 | P2-07.2, 07.3, 07.4, 08.1 | Done | PR #13; Sessions, aggregates (auto bucket minute ≤ 2 h, hour ≤ 3 d), metric points (inference counters preferred over the legacy histogram), Projects and API keys |
 | 2026-10-31 | P2-08.2, 08.3, 09.1 | Done | PR #14; pricing versions, finalizer (`SKIP LOCKED`), rebuild, cost recompute, retention by age/size, job locks (PG advisory); retention age clamped to avoid BIGINT overflow |
 | 2026-10-31 | P2-10.1, 10.2, 11.1 | Done | PR #15; change feed (after-commit publish, PG NOTIFY in the commit transaction, LISTEN with origin/namespace filtering, fingerprint polling fallback); parity SQLite↔PG on runs, search sets, aggregates, percentiles, Sessions; `scripts/check_upgrade_head.py` in CI. **P2 gate**: 681 passed, `store` coverage 95 %. Finding: tied Sessions are ordered by the Session ULID (surrogate), so tie order differs across databases |
+| 2026-10-31 | P3 prep | Done | PR #16; Delta `changes/2026-10-p3-ingest-prep/` (A-04, A-07, A-08, A-17) folded; P3 detailed |
+| 2026-10-31 | P3-01.1, 01.2, 01.3 | Done | PR #17; `SEMCONV_GENAI_COMMIT` = `6f98aef` (genai repo `main`, no release; closes Q-T2); mapping table + classification + dialects; messages normalizer (5 forms). Security review: JSON `RecursionError`, bounded list indices, content-drop prefixes widened beyond Tech Design §5.3 (fold later) |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).
