@@ -3,6 +3,8 @@
 import subprocess
 import sys
 
+import pytest
+
 import reflex_agentlens
 from reflex_agentlens.cli.main import main
 
@@ -11,7 +13,7 @@ def test_package_exposes_version() -> None:
     assert reflex_agentlens.__version__ == "0.1.0.dev0"
 
 
-def test_cli_version_prints_package_version(capsys) -> None:  # type: ignore[no-untyped-def]
+def test_cli_version_prints_package_version(capsys: pytest.CaptureFixture[str]) -> None:
     assert main([]) == 0
     assert capsys.readouterr().out.strip() == "0.1.0.dev0"
 

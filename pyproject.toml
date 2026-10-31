@@ -63,6 +63,7 @@ dev = [
     "playwright>=1.48",
     "pytest>=8",
     "pytest-asyncio>=0.24",
+    "pytest-cov>=6",
     "ruff>=0.8",
 ]
 docs = [
@@ -85,12 +86,111 @@ src = ["src", "tests"]
 extend-exclude = ["specs", "changes"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "S", "T20"]
+# S = bandit security rules; T20 = no print() outside the CLI (REQ-360.a, Constitution Art. 6).
+select = ["E", "F", "W", "I", "UP", "B", "S", "T20", "C4", "SIM", "PT", "ASYNC", "RUF"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S603"]
 "src/reflex_agentlens/cli/**" = ["T20"]
 
+[tool.mypy]
+python_version = "3.11"
+files = ["src/reflex_agentlens", "tests"]
+mypy_path = "src"
+strict = true
+warn_unreachable = true
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
+
+# strict = true is the gate for core, ingest, store and query (REQ-360.a). The Reflex layers
+# (pages, components, app, _webapp) and the tests keep strict checking of what they define, but
+# may call into untyped Reflex APIs.
+[[tool.mypy.overrides]]
+module = [
+    "reflex_agentlens.pages.*",
+    "reflex_agentlens.components.*",
+    "reflex_agentlens.app.*",
+    "reflex_agentlens._webapp.*",
+    "tests.*",
+]
+disallow_untyped_calls = false
+disallow_any_generics = false
+disallow_subclassing_any = false
+disallow_untyped_decorators = false
+warn_return_any = false
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra"
+addopts = "-ra --strict-markers"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "pg: needs PostgreSQL; skipped unless AGENTLENS_TEST_PG_URL is set",
+    "slow: long-running test (benchmarks, large datasets)",
+    "smoke: boots the packaged app end to end",
+    "docker: needs a Docker daemon",
+]
+
+[tool.coverage.run]
+# Coverage gate scope (REQ-361.a): ingest + store + query.
+source = ["reflex_agentlens.ingest", "reflex_agentlens.store", "reflex_agentlens.query"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+skip_covered = true
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError", "\\.\\.\\.$"]
+
+[tool.importlinter]
+root_package = "reflex_agentlens"
+include_external_packages = true
+
+# Tech Design §5.1 import contracts (REQ-360.a, Constitution Art. 6, API §1.1).
+[[tool.importlinter.contracts]]
+name = "Layers: UI > query > ingest/store > core"
+type = "layers"
+containers = ["reflex_agentlens"]
+layers = [
+    "pages : components : app : cli : _webapp",
+    "query",
+    "ingest : store",
+    "core",
+]
+exhaustive = false
+
+[[tool.importlinter.contracts]]
+name = "Core layers never import Reflex or the UI packages"
+type = "forbidden"
+source_modules = [
+    "reflex_agentlens.core",
+    "reflex_agentlens.ingest",
+    "reflex_agentlens.store",
+    "reflex_agentlens.query",
+]
+forbidden_modules = ["reflex", "reflex_silverpoint_react", "reflex_mermaidjs"]
+
+[[tool.importlinter.contracts]]
+name = "ingest does not import query"
+type = "forbidden"
+source_modules = ["reflex_agentlens.ingest"]
+forbidden_modules = ["reflex_agentlens.query"]
+
+[[tool.importlinter.contracts]]
+name = "store does not import ingest"
+type = "forbidden"
+source_modules = ["reflex_agentlens.store"]
+forbidden_modules = ["reflex_agentlens.ingest"]
+
+[[tool.importlinter.contracts]]
+name = "query does not import ingest (except the redaction preview)"
+type = "forbidden"
+source_modules = ["reflex_agentlens.query"]
+forbidden_modules = ["reflex_agentlens.ingest"]
+ignore_imports = ["reflex_agentlens.query.** -> reflex_agentlens.ingest.redaction.preview"]
+unmatched_ignore_imports_alerting = "none"
+
+[[tool.importlinter.contracts]]
+name = "pages and components go through query, never store"
+type = "forbidden"
+source_modules = ["reflex_agentlens.pages", "reflex_agentlens.components"]
+forbidden_modules = ["reflex_agentlens.store"]
