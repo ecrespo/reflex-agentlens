@@ -10,7 +10,7 @@ whole batch once before failing it as retryable.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, TypeVar
 
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError
@@ -19,13 +19,14 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from reflex_agentlens.core.errors import StorageUnavailable
 from reflex_agentlens.core.timeutil import now_ns
 from reflex_agentlens.store import migrate as migrations
-from reflex_agentlens.store.reads import ReadMethods
 from reflex_agentlens.store.records import NormalizedBatch, SchemaStatus, WriteResult
 from reflex_agentlens.store.sqlite.backend import DEFAULT_WINDOW_NS
+from reflex_agentlens.store.writeapi import BackendMethods
 from reflex_agentlens.store.writepath import WriteOutcome, write_batch
 
 __all__ = ["DEADLOCK_SQLSTATE", "PostgresBackend", "async_url"]
 
+_R = TypeVar("_R")
 DEADLOCK_SQLSTATE = "40P01"
 SERIALIZATION_SQLSTATE = "40001"
 
@@ -43,7 +44,7 @@ def _sqlstate(exc: BaseException) -> str | None:
     return getattr(orig, "sqlstate", None)
 
 
-class PostgresBackend(ReadMethods):
+class PostgresBackend(BackendMethods):
     """``StorageBackend`` on PostgreSQL ≥ 15 (REQ-072)."""
 
     def __init__(
@@ -111,6 +112,10 @@ class PostgresBackend(ReadMethods):
 
     async def migrate(self) -> None:
         await migrations.migrate(self.engine)
+
+    async def _on_writer(self, fn: Callable[..., _R], *args: Any) -> _R:
+        async with self.engine.begin() as conn:
+            return await conn.run_sync(fn, *args)
 
     async def _write_once(self, batch: NormalizedBatch) -> WriteOutcome:
         async with self.engine.begin() as conn:

@@ -14,7 +14,7 @@ import asyncio
 from collections.abc import Callable
 from datetime import timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from sqlalchemy import event
 from sqlalchemy.engine import make_url
@@ -23,8 +23,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from reflex_agentlens.core.errors import StorageUnavailable
 from reflex_agentlens.core.timeutil import NS_PER_S, now_ns
 from reflex_agentlens.store import migrate as migrations
-from reflex_agentlens.store.reads import ReadMethods
 from reflex_agentlens.store.records import NormalizedBatch, SchemaStatus, WriteResult
+from reflex_agentlens.store.writeapi import BackendMethods
 from reflex_agentlens.store.writepath import write_batch
 
 __all__ = ["CONNECTION_PRAGMAS", "CREATION_PRAGMAS", "SqliteBackend"]
@@ -38,6 +38,7 @@ CONNECTION_PRAGMAS = (
     ("cache_size", "-65536"),
 )
 CREATION_PRAGMAS = (("page_size", "8192"), ("auto_vacuum", "INCREMENTAL"))
+_R = TypeVar("_R")
 DEFAULT_WINDOW_NS = int(timedelta(minutes=5).total_seconds()) * NS_PER_S
 
 
@@ -64,7 +65,7 @@ def _begin_immediate(conn: Any) -> None:
     conn.exec_driver_sql("BEGIN IMMEDIATE")
 
 
-class SqliteBackend(ReadMethods):
+class SqliteBackend(BackendMethods):
     """``StorageBackend`` on one SQLite file (REQ-071)."""
 
     def __init__(
@@ -159,6 +160,11 @@ class SqliteBackend(ReadMethods):
     async def migrate(self) -> None:
         async with self._write_lock:
             await migrations.migrate(self.write_engine)
+
+    async def _on_writer(self, fn: Callable[..., _R], *args: Any) -> _R:
+        """One ``BEGIN IMMEDIATE`` transaction on the write connection, under the writer lock."""
+        async with self._write_lock, self.write_engine.begin() as conn:
+            return await conn.run_sync(fn, *args)
 
     # ── ingest path ──────────────────────────────────────────────────────────────────────────
 

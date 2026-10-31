@@ -12,25 +12,52 @@ Implemented so far:
 - P2-05.2 / P2-06.1: ``write_batch``
 - P2-07.1: ``list_runs``, ``find_runs_by_trace_id``, ``get_trace``, ``get_span_raw``,
   ``list_llm_calls``, ``list_sources``, ``distinct_values``
+- P2-07.2: ``list_sessions``, ``get_session``
+- P2-07.3: ``agg_kpis``, ``agg_runs_over_time``, ``agg_tokens_cost_by_model``,
+  ``agg_latency_percentiles``, ``agg_tool_stats``, ``agg_by_source``, ``agg_approvals``
+- P2-07.4: ``write_metric_points``, ``agg_metric_token_usage``
+- P2-08.1: ``list_projects``, ``create_project``, ``update_project``, ``delete_project``,
+  ``create_api_key``, ``list_api_keys``, ``revoke_api_key``, ``resolve_api_key``, ``touch_api_key``
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
 from reflex_agentlens.store.records import (
+    AggQuery,
+    ApiKeyRecord,
+    ApprovalStats,
     FacetField,
+    Kpis,
+    LatencyDim,
+    LatencyRow,
     LLMCallView,
+    MetricPoint,
+    ModelUsage,
+    NewApiKeyRecord,
+    NewProject,
     NormalizedBatch,
     Page,
+    Project,
+    ProjectPatch,
     ProjectScope,
+    RunCursor,
     RunKey,
     RunQuery,
     RunSummary,
     SchemaStatus,
+    SessionCursor,
+    SessionDetail,
+    SessionQuery,
+    SessionSummary,
+    SourceUsageRow,
     SourceView,
     SpanRaw,
     TimeRange,
+    TimeSeries,
+    ToolStatRow,
     TraceDetail,
     WriteResult,
 )
@@ -64,9 +91,18 @@ class StorageBackend(Protocol):
     async def write_batch(self, batch: NormalizedBatch) -> WriteResult:
         """Persist one normalized batch in one transaction (API §5.1)."""
 
+    async def write_metric_points(self, points: Sequence[MetricPoint]) -> int:
+        """Insert GenAI metric points idempotently; returns how many were new (REQ-005)."""
+
+    async def resolve_api_key(self, key_id: str) -> ApiKeyRecord | None:
+        """Q14: the key record (salt and hash only) by public key ID, revoked or not (REQ-006)."""
+
+    async def touch_api_key(self, key_id: str, at_ns: int) -> None:
+        """Record use of a key, at most once per minute."""
+
     # ── reads: runs and traces (P2-07.1) ─────────────────────────────────────────────────────
 
-    async def list_runs(self, query: RunQuery) -> Page[RunSummary]:
+    async def list_runs(self, query: RunQuery) -> Page[RunSummary, RunCursor]:
         """Q1-Q3: filtered, keyset-paginated Runs (REQ-100, REQ-101); empty scope → empty."""
 
     async def find_runs_by_trace_id(self, scope: ProjectScope, trace_id: bytes) -> list[RunKey]:
@@ -88,3 +124,60 @@ class StorageBackend(Protocol):
         self, scope: ProjectScope, field: FacetField, time_range: TimeRange, limit: int = 100
     ) -> list[str]:
         """Sorted distinct facet values for filter pickers (REQ-101)."""
+
+    # ── reads: Sessions (P2-07.2) ────────────────────────────────────────────────────────────
+
+    async def list_sessions(self, query: SessionQuery) -> Page[SessionSummary, SessionCursor]:
+        """Q9a: Sessions with at least one Run, filtered, sorted, keyset-paginated (REQ-105.a)."""
+
+    async def get_session(self, scope: ProjectScope, session_id: str) -> SessionDetail | None:
+        """Q9b: the Session and its Runs in start order with running totals (REQ-105.b)."""
+
+    # ── aggregates (P2-07.3, P2-07.4; SQL only, bounded rows, REQ-106.h) ─────────────────────
+
+    async def agg_kpis(self, q: AggQuery) -> Kpis:
+        """Q8 (REQ-106.g)."""
+
+    async def agg_runs_over_time(self, q: AggQuery) -> TimeSeries:
+        """Q10a (REQ-106.a): Runs per bucket and status."""
+
+    async def agg_tokens_cost_by_model(self, q: AggQuery) -> ModelUsage:
+        """Q10b (REQ-106.b)."""
+
+    async def agg_latency_percentiles(self, q: AggQuery, by: LatencyDim) -> list[LatencyRow]:
+        """Q10c (REQ-106.c, DD-005)."""
+
+    async def agg_tool_stats(self, q: AggQuery, top_n: int) -> list[ToolStatRow]:
+        """Q10d (REQ-106.d)."""
+
+    async def agg_by_source(self, q: AggQuery) -> list[SourceUsageRow]:
+        """Q10e (REQ-106.e)."""
+
+    async def agg_approvals(self, q: AggQuery) -> ApprovalStats:
+        """Q10f (REQ-106.f)."""
+
+    async def agg_metric_token_usage(self, q: AggQuery) -> TimeSeries:
+        """Q11 (REQ-107.a): tokens per bucket, model and token type."""
+
+    # ── settings: Projects and API keys (P2-08.1) ────────────────────────────────────────────
+
+    async def list_projects(self) -> list[Project]:
+        """Every Project, by slug."""
+
+    async def create_project(self, new: NewProject) -> Project:
+        """REQ-170.a; ``Conflict`` on a duplicate slug."""
+
+    async def update_project(self, project_id: str, patch: ProjectPatch) -> Project:
+        """Apply a patch and bump ``settings_version`` (REQ-173, REQ-006.c)."""
+
+    async def delete_project(self, project_id: str) -> None:
+        """REQ-170.d: cascades to all of the Project's data."""
+
+    async def create_api_key(self, rec: NewApiKeyRecord) -> ApiKeyRecord:
+        """REQ-170.b: salt and hash only (REQ-320.a)."""
+
+    async def list_api_keys(self, project_id: str) -> list[ApiKeyRecord]:
+        """Keys of one Project, oldest first."""
+
+    async def revoke_api_key(self, key_id: str, at_ns: int) -> None:
+        """REQ-170.c: terminal."""
