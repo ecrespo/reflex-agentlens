@@ -19,7 +19,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import Connection, delete, func, insert, select, text
+from sqlalchemy import BigInteger, Connection, case, delete, func, insert, literal, select, text
 
 from reflex_agentlens.store import schema as s
 from reflex_agentlens.store.recompute import recompute_sessions
@@ -43,6 +43,21 @@ NS_PER_S = 1_000_000_000
 r, p, ses = s.runs, s.projects, s.sessions
 
 
+def _max_age(now_ns: int) -> int:
+    """Ages beyond this put the cutoff before the epoch; clamping avoids BIGINT overflow."""
+    return max(now_ns // NS_PER_S, 0)
+
+
+def _cutoff(now_ns: int, max_age_s: Any) -> Any:
+    """``now - max_age`` in ns, never overflowing for any stored age (SQL or Python value)."""
+    cap = _max_age(now_ns)
+    if isinstance(max_age_s, int):
+        return now_ns - min(max_age_s, cap) * NS_PER_S
+    big = literal(cap, BigInteger)
+    clamped = case((max_age_s > big, big), else_=max_age_s)
+    return literal(now_ns, BigInteger) - clamped * literal(NS_PER_S, BigInteger)
+
+
 def _delete_runs(conn: Connection, run_pks: Sequence[int], now_ns: int) -> int:
     """Delete whole traces; returns their estimated bytes."""
     stmt = select(r.c.pk, r.c.bytes_est, r.c.session_pk).where(r.c.pk.in_(run_pks))
@@ -63,7 +78,7 @@ def _delete_runs(conn: Connection, run_pks: Sequence[int], now_ns: int) -> int:
 
 def age_batch(conn: Connection, now_ns: int, batch_traces: int) -> tuple[int, int]:
     """Q13 by age: the oldest ``batch_traces`` traces past their Project's maximum age."""
-    cutoff = now_ns - p.c.retention_max_age_s * NS_PER_S
+    cutoff = _cutoff(now_ns, p.c.retention_max_age_s)
     pks = list(
         conn.execute(
             select(r.c.pk)
@@ -106,7 +121,7 @@ def cleanup(conn: Connection, now_ns: int) -> None:
     for project_pk, max_age in conn.execute(expired).all():
         conn.execute(
             delete(mp).where(mp.c.project_pk == project_pk,
-                             mp.c.time_ns < now_ns - max_age * NS_PER_S)
+                             mp.c.time_ns < _cutoff(now_ns, int(max_age)))
         )  # fmt: skip
     res = s.resources
     conn.execute(delete(res).where(res.c.pk.not_in(select(s.spans.c.resource_pk).distinct())))

@@ -167,3 +167,15 @@ async def test_job_lock_across_processes(db: ContractDB) -> None:
             assert theirs
     finally:
         await second.close()
+
+
+async def test_huge_max_age_does_not_overflow(db: ContractDB) -> None:
+    """A maximum age near BIGINT's range must not break the purge for every Project."""
+    backend = db.require_backend()
+    huge, normal = await load(db, RUNS), await load(db, RUNS)
+    await backend.update_project(huge, ProjectPatch(retention_max_age_s=2**62))
+    report = await backend.purge_by_age(NOW_NS, batch_traces=50)
+    expired = [run for run in RUNS if last_span(run) < NOW_NS - 30 * DAY]
+    assert report.deleted_traces_age == len(expired)  # only ``normal`` lost traces
+    assert len(await all_runs(db, RunQuery(frozenset({huge})))) == len(RUNS)
+    assert len(await all_runs(db, RunQuery(frozenset({normal})))) == len(RUNS) - len(expired)
