@@ -32,6 +32,7 @@ from reflex_agentlens.ingest.redaction.presets import DEFAULT_PRESETS, PRESETS, 
 from reflex_agentlens.ingest.redaction.rules import (
     CompiledRules,
     compile_rules,
+    glob_match,
     validate_rule_set,
 )
 from reflex_agentlens.store.records import RedactionRuleSet
@@ -318,3 +319,102 @@ def test_canary_secret_straddling_the_truncation_limit() -> None:
     assert OPENAI[:6] not in stored
     assert safe.flags & FLAG_REDACTED
     assert safe.flags & FLAG_TRUNCATED
+
+
+# ── security review follow-ups ────────────────────────────────────────────────────────────────
+
+
+def test_span_and_event_names_are_redacted() -> None:
+    sp = span()
+    sp.name = f"call with {AWS}"
+    sp.events.add(name=f"retry {AWS}")
+    out = redact_draft(draft(sp, Resource(), InstrumentationScope(name="t"), NOW_NS, ""),
+                       rules("secrets"))  # fmt: skip
+    assert out.name == "call with [REDACTED:secrets]"
+    assert out.events[0]["name"] == "retry [REDACTED:secrets]"
+    assert out.flags & FLAG_REDACTED
+
+
+def test_integers_are_scanned_as_text() -> None:
+    """A card number sent as a number (attribute or inside JSON) is caught; others are kept."""
+    doc = json.dumps({"card": 4111111111111111, "qty": 3, "ok": True})
+    d = dataclasses.replace(
+        make(), attributes={"card": 4111111111111111, "n": 42, "flag": True, "doc": doc}
+    )
+    out = redact_draft(d, rules("credit_card"))
+    assert out.attributes["card"] == "[REDACTED:credit_card]"
+    assert out.attributes["n"] == 42
+    assert out.attributes["flag"] is True
+    assert json.loads(str(out.attributes["doc"])) == {
+        "card": "[REDACTED:credit_card]",
+        "qty": 3,
+        "ok": True,
+    }
+    assert out.flags & FLAG_REDACTED
+
+
+def test_field_rules_match_nested_paths() -> None:
+    r = rules(
+        fields=[
+            {"key_glob": "http.headers.authorization", "action": "drop"},
+            {"key_glob": "users.*.email", "action": "mask"},
+        ]
+    )
+    attrs = {
+        "http.headers": {"authorization": "Bearer x", "accept": "*/*"},
+        "users": [{"email": "a@b.co", "id": 1}, "plain"],
+        "bin": {"$b64": "AAAA"},
+    }
+    out = redact_draft(dataclasses.replace(make(), attributes=attrs), r)  # type: ignore[arg-type]
+    assert out.attributes == {
+        "http.headers": {"accept": "*/*"},
+        "users": [{"email": FIELD_MARKER, "id": 1}, "plain"],
+        "bin": {"$b64": "AAAA"},
+    }
+    assert out.flags & FLAG_REDACTED
+
+
+def test_field_rules_on_event_and_link_attributes() -> None:
+    sp = span()
+    ev = sp.events.add(name="e")
+    ev.attributes.add(key="secret").value.string_value = "x"
+    ln = sp.links.add(trace_id=b"\x01" * 16, span_id=b"\x02" * 8)
+    ln.attributes.add(key="secret").value.string_value = "y"
+    d = draft(sp, Resource(), InstrumentationScope(name="t"), NOW_NS, "")
+    out = redact_draft(d, rules(fields=[{"key_glob": "secret", "action": "drop"}]))
+    assert out.events[0]["attributes"] == {}
+    assert out.links[0]["attributes"] == {}
+
+
+@pytest.mark.parametrize(
+    ("glob", "key", "hit"),
+    [
+        ("*", "", True),
+        ("*", "anything.at.all", True),
+        ("a?c", "abc", True),
+        ("a?c", "ac", False),
+        ("http.*", "http.request.header", True),
+        ("*.email", "users.0.email", True),
+        ("*.email", "users.0.emails", False),
+        ("a*b*c", "aXbYc", True),
+        ("a*b*c", "aXbY", False),
+        ("a**", "a", True),
+        ("[x]", "[x]", True),  # no character classes: brackets are literal
+    ],
+)
+def test_glob_match(glob: str, key: str, hit: bool) -> None:
+    assert glob_match(glob, key) is hit
+
+
+def test_glob_match_is_polynomial_on_pathological_input() -> None:
+    import time
+
+    started = time.perf_counter()
+    assert not glob_match("*a" * 120 + "*b", "a" * 4000)
+    assert time.perf_counter() - started < 2.0
+
+
+@pytest.mark.parametrize("glob", ["", "a" * 257])
+def test_key_glob_length_is_capped(glob: str) -> None:
+    with pytest.raises(ValidationError, match="1-256"):
+        rules(fields=[{"key_glob": glob}])

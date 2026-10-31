@@ -1,7 +1,10 @@
 """Apply compiled redaction rules to a span draft (plan task P3-04.1; REQ-039.a/b/d, DD-013).
 
-Order: field rules (``drop`` removes the key, ``mask`` replaces the value), then pattern rules on
-every string leaf of span, event, link and resource attributes and the status message. Exception
+Order: field rules (``drop`` removes the key, ``mask`` replaces the value; matched on the dotted
+path at any depth), then pattern rules on every string leaf of span, event, link and resource
+attributes, the status message, the span name and event names. Integers (attribute values and
+numbers inside JSON documents) are scanned as text, so a card number sent as a number is caught.
+Attribute *keys* are never rewritten (REQ-039.a covers values; keys drive the mapping). Exception
 messages and stack traces are event attributes, so they are covered. A string that holds JSON
 (``gen_ai.input.messages`` and friends) is parsed, redacted leaf by leaf and re-serialized, so a
 match never breaks the document. A pattern that exceeds its budget replaces the **whole** value
@@ -13,6 +16,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+from collections.abc import Callable
 from typing import Any
 
 from reflex_agentlens.ingest.normalize.spans import (
@@ -22,7 +26,7 @@ from reflex_agentlens.ingest.normalize.spans import (
     map_strings,
 )
 from reflex_agentlens.ingest.redaction.rules import TIMEOUT_S, CompiledRules, PatternRule
-from reflex_agentlens.store.attrs import JsonValue
+from reflex_agentlens.store.attrs import B64_KEY, JsonValue
 
 __all__ = ["FIELD_MARKER", "TIMEOUT_MARKER", "redact_draft", "redact_text"]
 
@@ -59,9 +63,18 @@ def _plain(text: str, rules: CompiledRules, out: _Outcome) -> str:
     return text
 
 
+def _number(value: int, rules: CompiledRules, out: _Outcome) -> int | str:
+    """An integer can be a card or phone number: scan its text, replace it if anything matched."""
+    text = str(value)
+    new = _plain(text, rules, out)
+    return value if new == text else new
+
+
 def _leaves(value: Any, rules: CompiledRules, out: _Outcome) -> Any:
     if isinstance(value, str):
         return _plain(value, rules, out)
+    if isinstance(value, int) and not isinstance(value, bool):
+        return _number(value, rules, out)
     if isinstance(value, list):
         return [_leaves(v, rules, out) for v in value]
     if isinstance(value, dict):
@@ -89,30 +102,52 @@ def redact_text(text: str, rules: CompiledRules) -> str:
     return _redact(text, rules, _Outcome())
 
 
+def _is_bytes(value: dict[str, JsonValue]) -> bool:
+    return len(value) == 1 and isinstance(value.get(B64_KEY), str)
+
+
+def _tree(value: JsonValue, path: str, rules: CompiledRules, out: _Outcome) -> JsonValue:
+    """Non-string handling of one attribute value: nested field rules and integers."""
+    if isinstance(value, dict) and not _is_bytes(value):
+        return _fields(value, rules, out, f"{path}.")
+    if isinstance(value, list):
+        return [_tree(v, f"{path}.{i}", rules, out) for i, v in enumerate(value)]
+    if isinstance(value, int) and not isinstance(value, bool) and rules.patterns:
+        new = _number(value, rules, out)
+        if new != value:
+            out.changed = True
+        return new
+    return value
+
+
 def _fields(
-    attrs: dict[str, JsonValue], rules: CompiledRules, out: _Outcome
+    attrs: dict[str, JsonValue], rules: CompiledRules, out: _Outcome, prefix: str = ""
 ) -> dict[str, JsonValue]:
-    if not rules.fields:
-        return attrs
+    """Field rules match the dotted path at any depth (``a.b`` for ``{"a": {"b": ...}}``,
+    ``a.0.b`` inside arrays); ``drop`` removes the key, ``mask`` replaces the value."""
     kept: dict[str, JsonValue] = {}
     for key, value in attrs.items():
-        rule = next((r for r in rules.fields if r.pattern.fullmatch(key)), None)
+        path = f"{prefix}{key}"
+        rule = next((r for r in rules.fields if r.matches(path)), None)
         if rule is None:
-            kept[key] = value
-        else:
-            out.changed = True
-            if rule.action == "mask":
-                kept[key] = FIELD_MARKER
+            kept[key] = _tree(value, path, rules, out)
+            continue
+        out.changed = True
+        if rule.action == "mask":
+            kept[key] = FIELD_MARKER
     return kept
 
 
 def _on_attrs(container: dict[str, JsonValue], rules: CompiledRules, out: _Outcome) -> Any:
     attrs = container.get("attributes")
-    return (
-        {**container, "attributes": _fields(attrs, rules, out)}
-        if isinstance(attrs, dict)
-        else container
-    )
+    if not isinstance(attrs, dict):
+        return container
+    return {**container, "attributes": _fields(attrs, rules, out)}
+
+
+def _rename(event: dict[str, JsonValue], fn: Callable[[str], str]) -> dict[str, JsonValue]:
+    name = event.get("name")
+    return {**event, "name": fn(name)} if isinstance(name, str) else event
 
 
 def redact_draft(d: SpanDraft, rules: CompiledRules) -> SpanDraft:
@@ -134,7 +169,11 @@ def redact_draft(d: SpanDraft, rules: CompiledRules) -> SpanDraft:
             out.changed = True
         return new
 
-    result = map_strings(staged, one) if rules.patterns else staged
+    result = staged
+    if rules.patterns:
+        mapped = map_strings(staged, one)
+        events = [_rename(ev, one) for ev in mapped.events]
+        result = dataclasses.replace(mapped, name=one(mapped.name), events=events)
     flags = result.flags
     if out.changed:
         flags |= FLAG_REDACTED

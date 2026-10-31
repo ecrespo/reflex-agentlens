@@ -21,6 +21,7 @@ from reflex_agentlens.store.records import RedactionRuleSet
 
 __all__ = [
     "MAX_FIELD_RULES",
+    "MAX_GLOB_CHARS",
     "MAX_PATTERN_RULES",
     "MAX_REGEX_BYTES",
     "TIMEOUT_S",
@@ -28,11 +29,12 @@ __all__ = [
     "FieldRule",
     "PatternRule",
     "compile_rules",
+    "glob_match",
     "validate_rule_set",
 ]
 
 TIMEOUT_S = 0.025  # per rule per value (API §3.5)
-MAX_PATTERN_RULES, MAX_FIELD_RULES, MAX_REGEX_BYTES = 50, 100, 2048
+MAX_PATTERN_RULES, MAX_FIELD_RULES, MAX_REGEX_BYTES, MAX_GLOB_CHARS = 50, 100, 2048, 256
 _SAMPLE = ("a" * 64 + "@" + "a." * 32 + "1-" * 64) * 128  # ~64 KiB of near-miss text
 
 
@@ -52,7 +54,9 @@ class PatternRule:
 class FieldRule:
     key_glob: str
     action: Literal["drop", "mask"]
-    pattern: Any  # compiled glob
+
+    def matches(self, key: str) -> bool:
+        return glob_match(self.key_glob, key)
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,12 +69,28 @@ class CompiledRules:
         return not self.patterns and not self.fields
 
 
-def _glob(key_glob: str) -> Any:
-    """``fnmatch``-style glob on flattened keys (``*``, ``?``), matched against the whole key."""
-    parts = []
-    for ch in key_glob:
-        parts.append(".*" if ch == "*" else "." if ch == "?" else regex.escape(ch))
-    return regex.compile("".join(parts), regex.DOTALL)
+def glob_match(glob: str, key: str) -> bool:
+    """``fnmatch``-style ``*`` / ``?`` against the whole key, in O(len(glob) x len(key)).
+
+    The classic two-pointer matcher: on a mismatch it only resumes after the most recent ``*``,
+    so a glob such as ``*a*a*a*b`` can never backtrack exponentially (no regex involved).
+    """
+    g = k = 0
+    star, mark = -1, 0
+    while k < len(key):
+        if g < len(glob) and (glob[g] == "?" or glob[g] == key[k]):
+            g, k = g + 1, k + 1
+        elif g < len(glob) and glob[g] == "*":
+            star, mark = g, k
+            g += 1
+        elif star != -1:
+            g, mark = star + 1, mark + 1
+            k = mark
+        else:
+            return False
+    while g < len(glob) and glob[g] == "*":
+        g += 1
+    return g == len(glob)
 
 
 def _compile(source: str, where: str) -> Any:
@@ -108,11 +128,13 @@ def compile_rules(rules: RedactionRuleSet) -> CompiledRules:
         if not isinstance(raw, dict) or not isinstance(raw.get("key_glob"), str):
             raise ValidationError(where, "needs a key_glob")
         glob = str(raw["key_glob"])
+        if not glob or len(glob) > MAX_GLOB_CHARS:
+            raise ValidationError(where, "key_glob must be 1-256 characters")
         action = raw.get("action", "mask")
         if action == "drop":
-            fields.append(FieldRule(glob, "drop", _glob(glob)))
+            fields.append(FieldRule(glob, "drop"))
         elif action == "mask":
-            fields.append(FieldRule(glob, "mask", _glob(glob)))
+            fields.append(FieldRule(glob, "mask"))
         else:
             raise ValidationError(where, "action must be drop or mask")
     return CompiledRules(tuple(patterns), tuple(fields))
