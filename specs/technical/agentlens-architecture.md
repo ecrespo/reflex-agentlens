@@ -6,8 +6,8 @@
 |---|---|
 | **Author** | Ernesto Crespo (`ecrespo`) |
 | **Status** | `APPROVED` |
-| **Version** | 1.1.1 |
-| **Date** | 2026-10-30 |
+| **Version** | 1.2 |
+| **Date** | 2026-10-31 |
 | **Related PRD** | [`specs/prd/agentlens-v0.1.md`](../prd/agentlens-v0.1.md) v1.0 |
 | **Related API Spec** | [`specs/api/agentlens-api-v1.md`](../api/agentlens-api-v1.md) v1.0 |
 | **Governed by** | [`specs/constitution.md`](../constitution.md) v1.0 |
@@ -179,6 +179,10 @@ first 2,000 SpanNodes in DFS order are loaded into state, with subtrees deeper t
   and **OTLP/gRPC plus the whole ingest pipeline run in a dedicated "ingest thread" with its own
   asyncio loop** inside the same process. `collect` runs the identical ingest thread under a
   minimal Starlette app with no Reflex.
+  **S1 finding:** Granian's `Server` runs the app in a spawned worker process even with one
+  worker, so the ingest thread is started and stopped by a Reflex lifespan `asynccontextmanager`
+  (`app.register_lifespan_task`), which runs inside the worker. Shutdown ordering (HTTP closed →
+  lifespan exit → drain → gRPC stop → thread join) was verified in S1 (§11.1).
 - **Context:** Reflex prod mode is single-port and single-worker without Redis (state manager
   defaults to DISK; `get_num_workers()` = 1). Granian may run the app on a non-stdlib event loop,
   and `grpc.aio` must not depend on that loop **[spike S1]**. Hot reload restarts the backend
@@ -229,14 +233,19 @@ first 2,000 SpanNodes in DFS order are loaded into state, with subtrees deeper t
   by pinning Reflex to `>=0.10.1,<0.11`, by spike S1, and by a CI job that boots the installed
   wheel with **no `node`/`bun` on PATH** (REQ-200.b test).
 - **Consequences:**
-  1. **Baked port:** S1 determines whether `env.json` is a runtime-fetched asset. If it is,
-     `serve` rewrites it in the copied workdir from `server.public_url`, or else from
-     `http_host:http_port`. If it is compiled into the JS bundle, the bundle is built with
-     relative/same-origin endpoints if Reflex allows it. As a last resort we document: "the
-     standalone HTTP port is 8000 unless served behind HTTPS (any port) or a reverse proxy",
-     which would be a PRD known limitation (Amendment A6).
+  1. **Baked port (resolved by S1):** the backend URLs are compiled into
+     `assets/reflex-env-<hash>.js` (`localhost:8000`), not fetched at runtime. `serve` rewrites the
+     origin in the copied workdir from `server.public_url`, or else from `http_host:http_port`, and
+     deletes/regenerates the precompressed `.gz/.br/.zst` siblings (Reflex serves them in
+     preference to the plain file). Verified on a non-default port (§11.1). Amendment A6 dropped.
   2. Each Reflex minor bump is a deliberate upgrade with S1's boot test re-run.
   3. Embedded hosts compile agentlens pages with their own toolchain, so they are unaffected.
+  4. **Import side effects (S1, REQ-190.c):** importing `reflex_mermaidjs` creates
+     `assets/external/…` symlinks in the **current directory**, and importing the app module creates
+     `.states/` there. `serve` therefore `chdir`s to `{data_dir}/web/<version>/` and sets
+     `REFLEX_STATES_WORKDIR` **before** importing Reflex. No network or subprocess at import.
+  5. `serve` pre-checks the HTTP and gRPC ports with a bind test and exits with code 3 and a
+     one-line message; Granian otherwise prints a raw traceback on `EADDRINUSE` (REQ-200.c).
 
 ### DD-003: Write path with durable group commit (REQ-009, REQ-300/301)
 
@@ -303,10 +312,16 @@ first 2,000 SpanNodes in DFS order are loaded into state, with subtrees deeper t
   - **SQLite:** FTS5 contentless table, `tokenize='unicode61 remove_diacritics 2'`, rowid = span
     surrogate key.
   - **PostgreSQL:** `span_search(tsv tsvector)` built with `to_tsvector('simple', …)` plus a GIN index.
-  - **Queries:** each user term is lowercased, stripped to `[\p{L}\p{N}_]+` tokens and combined
-    with AND. FTS5 gets `"t1" "t2"` (quoted); PostgreSQL gets
-    `to_tsquery('simple', 't1 & t2')` built from validated tokens only. Run matches use
-    `EXISTS` on the trace.
+  - **Normalization (S2, Analyze A-15):** the document is stored already normalized by one pure
+    function `search_normalize(text)`: NFKD, drop combining marks, lowercase, every run of
+    non-letter/digit characters (including `_`, `.`, `-`) replaced by one space. Without it the
+    backends disagree: PostgreSQL's parser keeps `db.query` as one host token and does not fold
+    diacritics, FTS5 splits and folds.
+  - **Queries:** the user input goes through the same `search_normalize`, is split on spaces into
+    tokens and combined with AND. FTS5 gets `"t1" "t2"` (quoted); PostgreSQL gets
+    `to_tsquery('simple', 't1 & t2')` built from those tokens only. Run matches use `EXISTS` on
+    the trace. Identical result sets on both backends were verified for identifiers
+    (`search_web`, `db.query`, `gpt-4o-mini`, `RefundTool`, accented words; §11.2).
 - **Consequences:** No stemming and no prefix search in v0.1, identical on both backends for
   ASCII (REQ-073.b). Index size is bounded by the 32 KiB cap.
 
@@ -504,8 +519,12 @@ bucket deficit/refill, rounded up to ≥ 1 s.
   scripts (theme preload, `<Scripts/>`, `<ScrollRestoration/>`) and **no nonce support**.
   Emotion injects `<style>` tags.
 - **Decision:**
-  - `script-src 'self' 'sha256-…'`: hashes computed by the build hook from the exported
-    `index.html` inline scripts and shipped as `_frontend/csp.json`.
+  - `script-src 'self' 'sha256-…'`: hashes computed by the build hook from the inline scripts
+    of **every exported `*.html`** (index, 404, SPA fallback) and shipped as `_frontend/csp.json`.
+    S1: the served HTML is byte-identical across requests, so hashing works and the fallback below
+    is not needed; but two exports of the same source produce different inline scripts
+    (content-hashed chunk names, non-reproducible bundle), so hashes must always come from the
+    shipped artifact, never from a list kept in the source tree.
   - `style-src 'self' 'unsafe-inline'`.
   - `connect-src 'self'` plus an explicit same-origin `ws(s)://<host>` derived per request.
   - If S1 shows inline scripts vary per request (not hashable), fall back to
@@ -896,6 +915,59 @@ dropped it, and agentlens routes are plain Starlette (Amendment A3).
 | **S1 — Pre-built Reflex boot** | Does the DD-002 recipe boot `standalone_app()` from an installed wheel with no node/bun on PATH, under Granian, with grpc.aio on a separate thread? Is `env.json` runtime-fetched (port rewrite possible)? Are inline scripts hashable (CSP)? Do Pydantic DTOs work as state vars? Do Mermaid (`font_awesome=False`, `icon_packs=[]`) and silverpoint make zero third-party requests? | A Playwright smoke run passes with CSP enforced and zero external requests. A written report with the decisions for DD-002 consequence 1 and DD-018 fallback | UI phase, Docker, REQ-200.b/210 |
 | **S2 — SQL performance** | Do plain SQL write path (DD-003/004) and dashboard aggregates (DD-005) meet REQ-300/303/305 on generated 100k/1M datasets? | Benchmark report. If REQ-305 misses on SQLite, rollups (ladder step 1) are adopted in the Data Model | Data Model finalization of rollup tables, Phase 1 exit |
 
+Spike code and raw results live on the throwaway branches `spike/s1-prebuilt` (`spikes/s1/NOTES.md`)
+and `spike/s2-sql` (`spikes/s2/NOTES.md`, `spikes/s2/results/`). They are never merged.
+
+**Machine (all numbers):** AMD Ryzen AI 9 HX PRO 370 (24 threads), 45 GB RAM, NVMe, Linux 7.0,
+Python 3.13.9, Reflex 0.10.1, Granian 2.8.7, SQLite 3.51.0, PostgreSQL 18.6 (Docker, default
+configuration, loopback TCP), SQLAlchemy 2.0 async (aiosqlite / asyncpg), Chromium via Playwright 1.64.1.
+
+### 11.1 S1 results (2026-10-31): PASSED
+
+| Check | Result |
+|---|---|
+| Wheel boots with no `node`/`bun` on PATH (`env -i PATH=/usr/bin:/bin`) | Yes. Workdir prepared in 0.03–0.08 s; start → first `200` in 6.3 s (Reflex + app import) |
+| Export / wheel | `reflex export --frontend-only` ~28 s; 14 MB wheel, 28 MB unpacked bundle (Mermaid icon packs, ZenUML and ELK chunks dominate) |
+| Baked backend URL (DD-002 consequence 1) | Compiled into `reflex-env-*.js`. Rewritten per port (plus precompressed siblings): app works on 9123 → **A6 dropped** |
+| Pydantic DTOs as state vars | Yes (`list[BaseModel]` in state, `rx.foreach`, event updates). `pydantic>=2` must be a direct dependency (Reflex 0.10 does not depend on it) |
+| Ingest thread (DD-001) | Lifespan-started thread with `grpc.aio` + Starlette `POST /v1/traces` via `api_transformer`: 10,000/10,000 spans counted per protocol |
+| UI responsiveness during export | Event round-trip p95 67.9 ms idle vs. 67.3 ms at ~34k spans/s (parse-and-count only; re-measure with the real pipeline in P8) |
+| SIGTERM during export | Ordered shutdown, exit 0 in 0.03 s, `:http` and `:4317` released, no leftover process |
+| CSP (DD-018) | Enforced with 11 inline-script hashes: 0 violations, no `unsafe-eval`, fully interactive. Hashes stable across requests, **not across builds** |
+| Third-party requests (REQ-324.b) | 0 foreign requests, 0 console errors over a full session |
+| Import side effects (REQ-190.c) | No network/subprocess. Writes `assets/external/…` and `.states/` into the cwd → consequence 4 of DD-002 |
+| Other findings | `telemetry_enabled` defaults to `True` (every rxconfig sets it false; test it); SitemapPlugin enabled implicitly (disable); port in use → raw Granian traceback (consequence 5); sdist build needs a JS runtime (decide in P7-01) |
+
+### 11.2 S2 results (2026-10-31): REQ-300/303/304 PASSED, REQ-305 PASSED on PostgreSQL, MISSED on SQLite
+
+| Measure | SQLite | PostgreSQL | Target |
+|---|---|---|---|
+| Schema (one SQLAlchemy Core MetaData, `with_variant` + `ddl_if`) | creates; FTS5 + `contentless_delete` OK | creates | — |
+| 1M-span load through the write path (5,000-span groups) | 56.9 s, 843 MB | 113.9 s, 1.47 GB | — |
+| Write path, 4 producers → 1 writer, 120 s (in-process, no HTTP) | **16,002 spans/s**, commit p95 526 ms | **7,493 spans/s**, commit p95 1,327 ms | ≥ 2,000 (REQ-300) / ≥ 5,000 (REQ-301), indicative |
+| Order/batch invariance (10k spans, 4 orders incl. 10 % duplicates) | identical | identical, **and equal to SQLite** | REQ-037.a |
+| Q1–Q3 run list and filters, 100k, p95 | ≤ 3.2 ms | ≤ 7.0 ms | < 300 ms (REQ-303) |
+| Q5 trace of 1,009 spans, p95 | 8.6 ms | 9.6 ms | < 500 ms (REQ-304) |
+| FTS parity on identifiers | 18/18 identical **after** DD-006 normalization (5/18 differed before) | | REQ-073.b |
+| Dashboard full set (Q8 + Q10a–f), 1M spans, 30 days, p95 | **3,327 ms** ✗ | **724 ms** ✓ | < 1,500 / < 1,000 (REQ-305) |
+| — of which Q10c latency p50/p95/p99 (~850k rows ranked) | 2,519 ms | 360 ms | |
+| Aggregate value parity across backends | identical (every sum, bucket and percentile) | | DD-005 |
+
+Notes:
+- Q7 runs as one `WITH … UPDATE runs … FROM calc` statement with `ROW_NUMBER()` windows on both
+  backends; the affected set is `unnest(:pks)` (PG) or `json_each(:pks)` (SQLite). Bind values
+  derived by arithmetic are computed in Python (asyncpg cannot type `:a - :b`).
+- PG identity values are consumed by `INSERT … ON CONFLICT DO NOTHING`; surrogate `pk`s differ
+  between backends. Contract tests compare natural keys only.
+- Percentiles: three separate window passes cost 9.1 s on SQLite; one pass (PG
+  `percentile_disc(ARRAY[…])`, SQLite one `ROW_NUMBER()` per source stream) cut it to 2.5 s. The
+  rank is `ceil(p·N)` **in IEEE double**, as PostgreSQL computes it; SQLite must use the same
+  arithmetic for exact parity (Data Model v1.0.1).
+- **Open decision (P0-10.1):** SQLite misses REQ-305.a by ~2.2×, and the miss is entirely the
+  latency-percentile panel (the rest of the set takes ~0.8 s). DD-005's ladder step 1 (hourly
+  rollups with log2 histograms) would make percentiles approximate, which the PRD allows only via a
+  Delta Spec. The options are listed in the S2 report for the maintainer.
+
 ---
 
 ## 12. Proposed amendments to approved artifacts (apply on approval of this document)
@@ -910,7 +982,7 @@ PRD v1.1 / API v1.1 edits in the same commit that approves this design.
 | A3 | PRD §8, API §7.1/§1 | "FastAPI backend/routes" → "Starlette (Reflex backend)" | Reflex 0.10 has no FastAPI dependency |
 | A4 | API §8.2 | Add `[server] public_url` (URL; used for the banner, CORS, CSP and the frontend `env.json` rewrite) and `[server] ingest_enabled` (bool, default `true`; `false` for `app` in compose.postgres) | DD-002, DD-021, Reflex CORS default `*` |
 | A5 | API §7.4 | `script-src 'self' <build-time sha256 hashes>`, `style-src 'self' 'unsafe-inline'`, `connect-src 'self' ws(s)://<host>`. Fallback to `'unsafe-inline'` for scripts only per S1 result | DD-018 |
-| A6 | PRD §7.4 (conditional on S1) | Known limitation "standalone HTTP port fixed at 8000 unless behind HTTPS/reverse proxy", only if `env.json` cannot be rewritten | DD-002 |
+| A6 | PRD §7.4 (conditional on S1) — **dropped (S1: the compiled env module is rewritten per port)** | Known limitation "standalone HTTP port fixed at 8000 unless behind HTTPS/reverse proxy", only if `env.json` cannot be rewritten | DD-002 |
 | A7 | PRD REQ-250.a | LangGraph recipe = OpenInference (primary) plus LangSmith OTel (secondary, golden test SHOULD). OpenAI Agents SDK recipe per Q-T3 | Research §4 |
 
 ---
@@ -943,3 +1015,4 @@ PRD v1.1 / API v1.1 edits in the same commit that approves this design.
 | 1.1 | 2026-10-30 | Ernesto Crespo | Data Model notes: N1 (messages normalizer in `core.semconv.messages`), N2 (SQLite ≥ 3.43), N4 (`storage_usage` returns estimated and physical bytes) |
 | 1.0 | 2026-10-30 | Ernesto Crespo | Approved. Amendments A1–A5, A7 applied (PRD v1.1, API v1.1, Constitution v1.1). A6 pending S1. Art. 7 interpretation confirmed |
 | 1.1.1 | 2026-10-31 | Ernesto Crespo (with Claude) | Analyze A-03: DD-005 PostgreSQL percentiles use `percentile_disc` (nearest-rank), matching Data Model Q8 |
+| 1.2 | 2026-10-31 | Ernesto Crespo (with Claude) | Spike results §11.1 (S1) and §11.2 (S2). DD-001 lifespan-started ingest thread. DD-002 consequence 1 resolved (env module rewrite), consequences 4–5 added; A6 dropped. DD-006 search normalization (A-15). DD-018 hashes over all exported HTML, from the shipped artifact. REQ-305 decision open (P0-10.1) |

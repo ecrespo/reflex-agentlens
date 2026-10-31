@@ -101,7 +101,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **Done**: an `opentelemetry-sdk` client with the OTLP HTTP **and** gRPC exporters sends 10k spans;
   both receivers count them all. While exporting, the UI page stays responsive: event round-trip p95
   measured with Playwright is recorded (no target; input for DD-001's GIL concern).
-- [ ]
+- [x] 2026-10-31 · spike/s1-prebuilt e12432b
 
 ### P0-04.2 · S1c — shutdown ordering
 - **What**: Handle SIGTERM: close the HTTP receiver, drain the ingest loop, stop the gRPC server,
@@ -110,7 +110,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **Depends on**: P0-04.1
 - **Done**: `kill -TERM` during an export burst → process exits 0 within 5 s; no thread or port left
   open (`ss -ltn` shows `:4317` and the HTTP port released).
-- [ ]
+- [x] 2026-10-31 · spike/s1-prebuilt e12432b
 
 ### P0-05.1 · S1d — CSP with build-time hashes
 - **What**: Compute `sha256` hashes of every inline `<script>` in the exported `index.html`. Serve
@@ -122,7 +122,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **Done**: Playwright run with the header enforced shows no CSP violation in the console, no
   `unsafe-eval`, and the page fully interactive. Finding on hash stability recorded (decides the
   DD-018 fallback).
-- [ ]
+- [x] 2026-10-31 · spike/s1-prebuilt e12432b
 
 ### P0-05.2 · S1d — zero third-party requests
 - **What**: Playwright request interception over a full page session (load, chart hover, graph
@@ -130,7 +130,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **REQ / design**: REQ-324.b, DD-011, DD-017
 - **Depends on**: P0-03.1
 - **Done**: zero foreign-origin requests and zero frontend console errors.
-- [ ]
+- [x] 2026-10-31 · spike/s1-prebuilt e12432b
 
 ### P0-05.3 · S1d — import-time side effects of Reflex (Analyze A-16)
 - **What**: In a fresh interpreter with socket creation and filesystem writes blocked (audit hook via
@@ -141,7 +141,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **Depends on**: P0-02.1
 - **Done**: either zero blocked operations, or the list of Reflex-originated ones with a proposal for
   how the REQ-190.c test scopes them (to be decided in P0-06.1).
-- [ ]
+- [x] 2026-10-31 · spike/s1-prebuilt e12432b
 
 ### P0-06.1 · S1 report and decisions
 - **What**: Append "S1 results" to Tech Design §11 (machine spec, versions, timings, findings) and
@@ -152,7 +152,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **Depends on**: P0-03.2, P0-04.2, P0-05.1, P0-05.2, P0-05.3
 - **Done**: maintainer approves the spec edits; PR with spec-only changes merged into `develop`.
   If S1 failed outright: a Delta Spec is opened under `changes/` and P6/P7 stay blocked.
-- [ ]
+- [ ] 2026-10-31 · spec edits in PR `docs/spike-results` (Tech Design v1.2), awaiting maintainer approval
 
 ### P0-07.1 · S2a — prototype hot tables on both backends  [P]
 - **What**: On `spike/s2-sql`, SQLAlchemy Core definitions for `sources`, `sessions`, `runs`,
@@ -172,7 +172,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **Depends on**: P0-07.1
 - **Done**: same seed → identical row counts and identical checksum of generated IDs; 1M-span
   load completes on both backends.
-- [ ]
+- [x] 2026-10-31 · spike/s2-sql 86e890c
 
 ### P0-08.1 · S2b — write-path throughput
 - **What**: In-process write path: 4 producers submit 512-span batches into a queue; one writer
@@ -181,7 +181,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **REQ / design**: REQ-300.a, REQ-301.a (indicative), DD-003, DD-004, Data Model Q6/Q7
 - **Depends on**: P0-07.2
 - **Done**: JSON result with spans/s, commit latency p50/p95, and group sizes per backend.
-- [ ]
+- [x] 2026-10-31 · spike/s2-sql 86e890c
 
 ### P0-08.2 · S2b — order-invariance sanity check
 - **What**: Ingest the same 10k-span set in generation order, reversed, and shuffled into random
@@ -189,7 +189,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **REQ / design**: REQ-037.a (early check of DD-004)
 - **Depends on**: P0-08.1
 - **Done**: the three `runs` and `sessions` tables are identical (row-level hash match).
-- [ ]
+- [x] 2026-10-31 · spike/s2-sql 86e890c
 
 ### P0-09.1 · S2c — Runs and Trace query latency
 - **What**: Q1 (default page), Q2 (one filter each: model, tool, status, duration range), Q3
@@ -199,7 +199,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **Depends on**: P0-07.2
 - **Done**: JSON results; each query's `EXPLAIN` (SQLite `EXPLAIN QUERY PLAN`, PG `EXPLAIN ANALYZE`)
   saved next to the numbers.
-- [ ]
+- [x] 2026-10-31 · spike/s2-sql 86e890c
 
 ### P0-09.3 · S2c — full-text parity on identifiers (Analyze A-15)
 - **What**: Index span documents containing identifiers (`search_web`, `db.query`, `gpt-4o-mini`,
@@ -210,7 +210,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **Depends on**: P0-07.1
 - **Done**: a table of term → matching span IDs per backend. Either the sets are identical, or a
   tokenization rule that makes them identical is proposed in the S2 report (P0-10.1) for DD-006.
-- [ ]
+- [x] 2026-10-31 · spike/s2-sql 86e890c (fix proposed and applied to DD-006)
 
 ### P0-09.2 · S2c — Dashboard aggregate latency and backend parity
 - **What**: Q8 (KPIs) and every Q10 aggregate over a 30-day range on 1M spans, with
@@ -219,7 +219,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **Depends on**: P0-07.2
 - **Done**: p95 of the full aggregate set per backend recorded; both backends return identical
   aggregate values on the same dataset (difference = none).
-- [ ]
+- [ ] 2026-10-31 · measured on spike/s2-sql 86e890c: PG 724 ms ✓, SQLite 3,327 ms ✗ (values identical) → decision in P0-10.1
 
 ### P0-10.1 · S2 report and rollup decision
 - **What**: Append "S2 results" to Tech Design §11 with the numbers and the machine spec. Decide
@@ -229,7 +229,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **Depends on**: P0-08.1, P0-08.2, P0-09.1, P0-09.2, P0-09.3
 - **Done**: maintainer approves the spec edits; PR merged. If REQ-305 is missed even with rollups,
   a Delta Spec (ladder step 2) is opened before P2 starts.
-- [ ]
+- [ ] 2026-10-31 · S2 results in Tech Design §11.2 (same PR); **rollup / REQ-305 decision pending maintainer**
 
 ---
 
@@ -558,6 +558,12 @@ the matrix). No requirement is deferred at this point.
 | 2026-10-31 | P0-02.1, P0-02.2 | Done | Export works; 28 MB bundle (Mermaid icons/ZenUML/ELK); telemetry defaults on; hook needs `PYTHONPATH=src`; sdist question open for P7-01 (`spikes/s1/NOTES.md`) |
 | 2026-10-31 | P0-03.1, P0-03.2 | Done | Wheel boots with no JS runtime; no foreign requests; baked `localhost:8000` rewritten per port (A6 not needed); start→200 6.3 s; port-in-use gives raw Granian traceback → CLI pre-check (REQ-200.c) |
 | 2026-10-31 | P0-07.1 | Done | SQLite 3.51.0 + FTS5 contentless_delete, PG 18.6; one MetaData via `with_variant`/`ddl_if`; FTS5 shadow tables must be excluded from Alembic autogenerate (`spikes/s2/NOTES.md`) |
+| 2026-10-31 | P0-04.1, P0-04.2 | Done | Granian spawns a worker process → ingest thread started by a Reflex lifespan task; 10k/10k spans per protocol; UI p95 unchanged at ~34k spans/s; SIGTERM: ordered shutdown, exit 0, ports released |
+| 2026-10-31 | P0-05.1, P0-05.2, P0-05.3 | Done | Hash CSP enforced with 0 violations and no `unsafe-eval`; hashes stable per request, not per build; 0 foreign requests; Reflex writes `assets/external` and `.states` into the cwd at import |
+| 2026-10-31 | P0-07.2, P0-08.1, P0-08.2 | Done | 1M load 57 s / 114 s; 16.0k / 7.5k spans/s sustained; order invariance identical on and across backends |
+| 2026-10-31 | P0-09.1, P0-09.3 | Done | Run/trace queries ≤ 10 ms p95; FTS parity requires document normalization (applied to DD-006) |
+| 2026-10-31 | P0-09.2 | Measured | REQ-305: PG 724 ms ✓, SQLite 3.3 s ✗ (percentile panel 2.5 s); values identical → P0-10.1 decision |
+| 2026-10-31 | P0-06.1, P0-10.1 | In review | Tech Design v1.2 + Data Model v1.0.1 spec PR; REQ-305 option to be chosen by the maintainer |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).
