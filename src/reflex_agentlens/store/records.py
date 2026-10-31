@@ -269,6 +269,16 @@ class PricingVersion:
 
 
 @dataclass(frozen=True, slots=True)
+class UnpricedModel:
+    """A model seen in unpriced LLM calls (REQ-171.b)."""
+
+    provider: str
+    model: str
+    calls: int
+    last_seen_ns: int
+
+
+@dataclass(frozen=True, slots=True)
 class SavedFilter:
     id: str
     project_id: str

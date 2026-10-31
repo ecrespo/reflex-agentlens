@@ -16,6 +16,9 @@ Implemented so far:
 - P2-07.3: ``agg_kpis``, ``agg_runs_over_time``, ``agg_tokens_cost_by_model``,
   ``agg_latency_percentiles``, ``agg_tool_stats``, ``agg_by_source``, ``agg_approvals``
 - P2-07.4: ``write_metric_points``, ``agg_metric_token_usage``
+- P2-08.2: ``save_pricing``, ``list_pricing_versions``, ``get_pricing``, ``list_unpriced_models``,
+  ``save_redaction_rules``, ``get_ingest_settings``, ``list_saved_filters``, ``save_filter``,
+  ``delete_filter``
 - P2-08.1: ``list_projects``, ``create_project``, ``update_project``, ``delete_project``,
   ``create_api_key``, ``list_api_keys``, ``revoke_api_key``, ``resolve_api_key``, ``touch_api_key``
 """
@@ -30,6 +33,7 @@ from reflex_agentlens.store.records import (
     ApiKeyRecord,
     ApprovalStats,
     FacetField,
+    IngestSettings,
     Kpis,
     LatencyDim,
     LatencyRow,
@@ -38,15 +42,22 @@ from reflex_agentlens.store.records import (
     ModelUsage,
     NewApiKeyRecord,
     NewProject,
+    NewSavedFilter,
     NormalizedBatch,
     Page,
+    PricingEntry,
+    PricingSource,
+    PricingVersion,
+    PricingVersionMeta,
     Project,
     ProjectPatch,
     ProjectScope,
+    RedactionRuleSet,
     RunCursor,
     RunKey,
     RunQuery,
     RunSummary,
+    SavedFilter,
     SchemaStatus,
     SessionCursor,
     SessionDetail,
@@ -59,6 +70,7 @@ from reflex_agentlens.store.records import (
     TimeSeries,
     ToolStatRow,
     TraceDetail,
+    UnpricedModel,
     WriteResult,
 )
 
@@ -181,3 +193,40 @@ class StorageBackend(Protocol):
 
     async def revoke_api_key(self, key_id: str, at_ns: int) -> None:
         """REQ-170.c: terminal."""
+
+    # ── settings: pricing, redaction, ingest settings, saved filters (P2-08.2) ────────────────
+
+    async def save_pricing(
+        self,
+        entries: Sequence[PricingEntry],
+        author: str | None,
+        *,
+        effective_from_ns: int | None = None,
+        source: PricingSource = "editor",
+        note: str | None = None,
+    ) -> PricingVersion:
+        """REQ-060.a/c: a new immutable version (``max + 1``); earlier versions never change."""
+
+    async def list_pricing_versions(self) -> list[PricingVersionMeta]:
+        """Every pricing version, oldest first."""
+
+    async def get_pricing(self, at_ns: int | None = None) -> PricingVersion:
+        """The version in effect at ``at_ns`` (default now); ``NotFound`` if none (REQ-060.c)."""
+
+    async def list_unpriced_models(self, scope: ProjectScope) -> list[UnpricedModel]:
+        """Models of unpriced LLM calls, most calls first (REQ-171.b)."""
+
+    async def save_redaction_rules(self, project_id: str, rules: RedactionRuleSet) -> None:
+        """Replace the Project's rule set and bump ``settings_version`` (REQ-172)."""
+
+    async def get_ingest_settings(self, project_id: str) -> IngestSettings:
+        """What ingest caches per Project (REQ-006.c)."""
+
+    async def list_saved_filters(self, project_id: str) -> list[SavedFilter]:
+        """Saved filters of a Project, by name (REQ-102.a)."""
+
+    async def save_filter(self, f: NewSavedFilter) -> SavedFilter:
+        """Create or update by ``id``; ``Conflict`` on a duplicate name (REQ-102.a)."""
+
+    async def delete_filter(self, filter_id: str) -> None:
+        """``NotFound`` when the filter does not exist."""
