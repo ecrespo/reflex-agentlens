@@ -46,7 +46,7 @@ import reflex as rx
 import reflex_agentlens as agentlens
 
 app = rx.App()
-agentlens.mount(app, auth=my_auth, prefix="/agentlens")   # pages inside your own Reflex app
+agentlens.mount(app, auth=my_auth, prefix="/agentlens")  # pages inside your own Reflex app
 ```
 
 ## How it is built
