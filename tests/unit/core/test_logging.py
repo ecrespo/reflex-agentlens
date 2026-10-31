@@ -11,6 +11,7 @@ from typing import Literal
 import pytest
 
 from reflex_agentlens.core import logging as al_logging
+from reflex_agentlens.core.errors import StorageUnavailable
 
 CANARY = "CANARY-7f3a9c-do-not-log"
 NORMALIZER = "reflex_agentlens.ingest.normalize.fake"
@@ -54,7 +55,7 @@ def test_req_341a_one_valid_json_object_per_line_with_required_fields(
     assert first["event"] == "export.accepted"
     assert (first["spans"], first["duration_ms"], first["project_id"]) == (512, 61, "01JB")
     assert str(first["ts"]).endswith("Z")
-    assert second["event"] == "worker 1 started"  # third-party args still rendered
+    assert second["event"] == "worker 1 started"  # allowlisted third-party args are rendered
 
 
 def test_req_341a_level_comes_from_config(capture: io.StringIO) -> None:
@@ -111,18 +112,65 @@ def test_tracebacks_only_at_debug_and_without_locals(capture: io.StringIO) -> No
 
     def fails() -> None:
         local_secret = CANARY  # a local variable: never rendered
-        raise RuntimeError("database unreachable " + str(len(local_secret)))
+        raise StorageUnavailable(f"pool exhausted after {len(local_secret)} tries")
 
     try:
         fails()
-    except RuntimeError:
+    except StorageUnavailable:
         log.exception("db.error")
     line = _lines(capture)[0]
     assert "Traceback" in str(line["traceback"])
     assert CANARY not in json.dumps(line)
-    assert (
-        line["error"] == f"database unreachable {len(CANARY)}"
-    )  # non-normalizer messages are kept
+    # AgentlensError messages are value-free by design, so they are kept.
+    assert line["error"] == f"storage unavailable: pool exhausted after {len(CANARY)} tries"
+
+
+@pytest.mark.parametrize("level", ["INFO", "DEBUG"])
+def test_req_323a_foreign_exception_messages_fail_closed(capture: io.StringIO, level: str) -> None:
+    """A database driver error can embed bound parameters: only its class name is logged."""
+    log = _setup(capture, level=level)
+    try:
+        try:
+            raise KeyError(CANARY)
+        except KeyError as inner:
+            err = RuntimeError(f"INSERT failed, parameters: ('{CANARY}',)")
+            err.add_note(CANARY)
+            raise err from inner
+    except RuntimeError:
+        log.exception("write.failed")
+    out = capture.getvalue()
+    assert CANARY not in out
+    line = _lines(capture)[0]
+    assert line["error_class"] == "RuntimeError"
+    assert "error" not in line
+    if level == "DEBUG":
+        assert "KeyError" in str(line["traceback"])  # the chain is shown, by class name
+
+
+def test_req_323a_exception_group_members_are_guarded(capture: io.StringIO) -> None:
+    log = _setup(capture, level="DEBUG")
+    try:
+        _raise_from_normalizer()
+    except ValueError as e:
+        group = ExceptionGroup("batch", [e, StorageUnavailable(CANARY)])
+    try:
+        raise group
+    except ExceptionGroup:
+        log.exception("batch.failed")
+    assert CANARY not in capture.getvalue()
+    assert "ValueError" in str(_lines(capture)[0]["traceback"])
+
+
+def test_req_323a_args_dropped_for_content_bearing_third_party_loggers(
+    capture: io.StringIO,
+) -> None:
+    _setup(capture)
+    logging.getLogger("sqlalchemy.engine.Engine").warning("[generated] %r", (CANARY,))
+    logging.getLogger("httpx").warning("HTTP Request: %s", CANARY)
+    logging.getLogger("granian.server").warning("Listening at: %s", "http://127.0.0.1:8000")
+    out = capture.getvalue()
+    assert CANARY not in out
+    assert "Listening at: http://127.0.0.1:8000" in out
 
 
 def test_exception_at_info_has_class_but_no_traceback(capture: io.StringIO) -> None:
