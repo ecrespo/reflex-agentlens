@@ -7,8 +7,8 @@ on your infra. Embed it as a page in your own app or run it standalone.
 
 > **Status: pre-alpha, not usable yet.** The v0.1 specification is approved, the feasibility
 > spikes are done and the foundation (phase P1: tooling, CI and the `core` package) is built.
-> Storage (P2) is in progress: the schema, the attribute codec and the Alembic migrations for
-> SQLite and PostgreSQL are in review. Nothing is published on PyPI. See [Roadmap](#roadmap).
+> Storage (P2) is in progress: the schema, the Alembic migrations and the SQLite backend with its
+> write path are built and in review; the PostgreSQL backend and the read queries come next. Nothing is published on PyPI. See [Roadmap](#roadmap).
 
 ## Why
 
@@ -122,7 +122,7 @@ every pull request.
 |---|---|---|
 | P0 | Spikes: pre-built frontend in the wheel (S1), SQL performance on both backends (S2) | Done — results in Tech Design §11 |
 | P1 | Package skeleton, quality gates, CI, `core` (errors, IDs, time, money, API keys, config, logging) | Done — in review |
-| P2 | Store: schema and migrations on SQLite and PostgreSQL, write path, contract tests | In progress (schema and migrations in review) |
+| P2 | Store: schema and migrations on SQLite and PostgreSQL, write path, contract tests | In progress (schema, migrations and the SQLite write path in review) |
 | P3–P4 | Ingest, query | Planned |
 | P5–P7 | CLI, UI pages, embedding and standalone app | Planned |
 | P8–P10 | Benchmarks, Docker, docs, site, release | Planned |
