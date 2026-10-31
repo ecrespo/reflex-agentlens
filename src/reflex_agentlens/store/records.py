@@ -86,6 +86,7 @@ ApprovalDecision = Literal["approved", "rejected", "edited", "timeout", "pending
 PricingSource = Literal["bundled", "editor", "csv"]
 MetricKind = Literal["sum", "gauge", "histogram"]
 PurgeTrigger = Literal["scheduled", "manual"]
+JobName = Literal["retention", "finalizer", "rebuild", "recompute_costs", "bootstrap"]
 ChangeKind = Literal["spans_committed", "runs_finalized", "purged", "settings_changed"]
 
 JsonObject = dict[str, JsonValue]
@@ -296,6 +297,17 @@ class NewSavedFilter:
     name: str
     query: str
     created_by: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class StorageUsage:
+    """REQ-173.a: ``estimated_bytes`` is what the size limit (REQ-091) is compared with;
+    ``physical_bytes`` is the database's size on disk (SQLite file pages / PG relations)."""
+
+    estimated_bytes: int
+    physical_bytes: int | None
+    runs: int
+    spans: int
 
 
 @dataclass(frozen=True, slots=True)

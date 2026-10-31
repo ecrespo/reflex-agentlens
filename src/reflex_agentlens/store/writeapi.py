@@ -6,14 +6,20 @@ Backends provide ``_on_writer`` (one transaction on the write path: SQLite's sin
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+import asyncio
+import contextlib
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Any, TypeVar
 
-from reflex_agentlens.store import admin, maintenance, metrics, settings
+from sqlalchemy.exc import IntegrityError
+
+from reflex_agentlens.store import admin, maintenance, metrics, retention, settings
 from reflex_agentlens.store.readapi import ReadMethods
 from reflex_agentlens.store.records import (
     ApiKeyRecord,
     IngestSettings,
+    JobName,
     MetricPoint,
     NewApiKeyRecord,
     NewProject,
@@ -25,12 +31,15 @@ from reflex_agentlens.store.records import (
     Project,
     ProjectPatch,
     ProjectScope,
+    PurgeReport,
+    PurgeTrigger,
     RebuildReport,
     RebuildScope,
     RedactionRuleSet,
     RunKey,
     SavedFilter,
     SpanDeriver,
+    StorageUsage,
     TimeRange,
     UnpricedModel,
 )
@@ -173,3 +182,89 @@ class BackendMethods(ReadMethods):
             total += n
             if after is None:
                 return total
+
+    # ── retention (P2-09.1) ──────────────────────────────────────────────────────────────────
+
+    async def _purge(
+        self, trigger: PurgeTrigger, run: Callable[[dict[str, int]], Awaitable[None]]
+    ) -> PurgeReport:
+        started = self._clock()
+        counts = {"age": 0, "size": 0, "bytes": 0}
+        error: str | None = None
+        try:
+            await run(counts)
+            # a concurrent PG writer may reuse an orphan resource row: skip, retry next purge
+            with contextlib.suppress(IntegrityError):
+                await self._on_writer(retention.cleanup, self._clock())
+        except Exception as exc:
+            error = type(exc).__name__  # class name only (Constitution Art. 3)
+            raise
+        finally:
+            report = PurgeReport(
+                trigger=trigger, started_ns=started, finished_ns=self._clock(),
+                deleted_traces_age=counts["age"], deleted_traces_size=counts["size"],
+                deleted_bytes_est=counts["bytes"], error_class=error,
+            )  # fmt: skip
+            await self._on_writer(retention.record_purge, report)
+        return report
+
+    async def purge_by_age(
+        self, now_ns: int, batch_traces: int, *, trigger: PurgeTrigger = "scheduled"
+    ) -> PurgeReport:
+        """REQ-090.b: whole traces past their Project's maximum age, in bounded batches."""
+
+        async def run(counts: dict[str, int]) -> None:
+            while True:
+                n, freed = await self._on_writer(retention.age_batch, now_ns, batch_traces)
+                counts["age"] += n
+                counts["bytes"] += freed
+                if n < batch_traces:
+                    return
+
+        return await self._purge(trigger, run)
+
+    async def purge_by_size(
+        self, limit_bytes: int, batch_traces: int, *, trigger: PurgeTrigger = "scheduled"
+    ) -> PurgeReport:
+        """REQ-091.a: oldest traces across Projects until usage <= 90 % of ``limit_bytes``."""
+        target = limit_bytes * 9 // 10
+
+        async def run(counts: dict[str, int]) -> None:
+            usage = await self._on_read_pool(retention.estimated_bytes)
+            if usage <= limit_bytes:
+                return
+            while usage > target:
+                n, freed = await self._on_writer(
+                    retention.size_batch, usage - target, batch_traces, self._clock()
+                )
+                if n == 0:
+                    return
+                counts["size"] += n
+                counts["bytes"] += freed
+                usage -= freed
+
+        return await self._purge(trigger, run)
+
+    async def storage_usage(self) -> StorageUsage:
+        return await self._on_read_pool(retention.storage_usage)
+
+    async def last_purge(self) -> PurgeReport | None:
+        return await self._on_read_pool(retention.last_purge)
+
+    def job_lock(self, name: JobName) -> AbstractAsyncContextManager[bool]:
+        """REQ-092.b: ``True`` when this holder got the lock; a second holder gets ``False``.
+
+        In-process lock here (SQLite has a single writing process, DD-003); the PostgreSQL
+        backend overrides it with a session advisory lock shared by every process.
+        """
+        return self._local_job_lock(name)
+
+    @asynccontextmanager
+    async def _local_job_lock(self, name: str) -> AsyncIterator[bool]:
+        locks: dict[str, asyncio.Lock] = self.__dict__.setdefault("_job_locks", {})
+        lock = locks.setdefault(name, asyncio.Lock())
+        if lock.locked():
+            yield False
+            return
+        async with lock:
+            yield True

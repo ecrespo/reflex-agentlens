@@ -20,6 +20,7 @@ Implemented so far:
   ``save_redaction_rules``, ``get_ingest_settings``, ``list_saved_filters``, ``save_filter``,
   ``delete_filter``
 - P2-08.3: ``finalize_stale_runs``, ``rebuild``, ``recompute_costs``
+- P2-09.1: ``purge_by_age``, ``purge_by_size``, ``storage_usage``, ``last_purge``, ``job_lock``
 - P2-08.1: ``list_projects``, ``create_project``, ``update_project``, ``delete_project``,
   ``create_api_key``, ``list_api_keys``, ``revoke_api_key``, ``resolve_api_key``, ``touch_api_key``
 """
@@ -27,6 +28,7 @@ Implemented so far:
 from __future__ import annotations
 
 from collections.abc import Sequence
+from contextlib import AbstractAsyncContextManager
 from typing import Protocol, runtime_checkable
 
 from reflex_agentlens.store.records import (
@@ -35,6 +37,7 @@ from reflex_agentlens.store.records import (
     ApprovalStats,
     FacetField,
     IngestSettings,
+    JobName,
     Kpis,
     LatencyDim,
     LatencyRow,
@@ -53,6 +56,8 @@ from reflex_agentlens.store.records import (
     Project,
     ProjectPatch,
     ProjectScope,
+    PurgeReport,
+    PurgeTrigger,
     RebuildReport,
     RebuildScope,
     RedactionRuleSet,
@@ -70,6 +75,7 @@ from reflex_agentlens.store.records import (
     SourceView,
     SpanDeriver,
     SpanRaw,
+    StorageUsage,
     TimeRange,
     TimeSeries,
     ToolStatRow,
@@ -259,3 +265,25 @@ class StorageBackend(Protocol):
         batch_runs: int = 200,
     ) -> int:
         """REQ-062.a: re-price LLM calls with ``pricing``; Run and Session costs follow."""
+
+    # ── retention and coordination (P2-09.1) ─────────────────────────────────────────────────
+
+    async def purge_by_age(
+        self, now_ns: int, batch_traces: int, *, trigger: PurgeTrigger = "scheduled"
+    ) -> PurgeReport:
+        """REQ-090.b: delete whole traces past their Project's maximum age; logged."""
+
+    async def purge_by_size(
+        self, limit_bytes: int, batch_traces: int, *, trigger: PurgeTrigger = "scheduled"
+    ) -> PurgeReport:
+        """REQ-091.a: oldest traces across Projects until usage <= 90 % of the limit; logged."""
+
+    async def storage_usage(self) -> StorageUsage:
+        """REQ-173.a."""
+
+    async def last_purge(self) -> PurgeReport | None:
+        """REQ-173.b."""
+
+    def job_lock(self, name: JobName) -> AbstractAsyncContextManager[bool]:
+        """REQ-092.b: ``async with backend.job_lock("retention") as acquired: ...``."""
+        ...

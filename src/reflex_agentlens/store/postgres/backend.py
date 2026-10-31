@@ -9,9 +9,11 @@ whole batch once before failing it as retryable.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Any, TypeVar
 
+from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
@@ -19,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from reflex_agentlens.core.errors import StorageUnavailable
 from reflex_agentlens.core.timeutil import now_ns
 from reflex_agentlens.store import migrate as migrations
-from reflex_agentlens.store.records import NormalizedBatch, SchemaStatus, WriteResult
+from reflex_agentlens.store.records import JobName, NormalizedBatch, SchemaStatus, WriteResult
 from reflex_agentlens.store.sqlite.backend import DEFAULT_WINDOW_NS
 from reflex_agentlens.store.writeapi import BackendMethods
 from reflex_agentlens.store.writepath import WriteOutcome, write_batch
@@ -116,6 +118,27 @@ class PostgresBackend(BackendMethods):
     async def _on_writer(self, fn: Callable[..., _R], *args: Any) -> _R:
         async with self.engine.begin() as conn:
             return await conn.run_sync(fn, *args)
+
+    def job_lock(self, name: JobName) -> AbstractAsyncContextManager[bool]:
+        """REQ-092.b: a session advisory lock, so one holder across every process."""
+        return self._advisory_job_lock(name)
+
+    @asynccontextmanager
+    async def _advisory_job_lock(self, name: str) -> AsyncIterator[bool]:
+        key = {"k": f"agentlens:job:{name}"}
+        async with self.engine.connect() as conn:
+            got = bool(
+                (
+                    await conn.execute(text("SELECT pg_try_advisory_lock(hashtext(:k))"), key)
+                ).scalar()
+            )
+            await conn.commit()  # the session lock outlives the transaction
+            try:
+                yield got
+            finally:
+                if got:
+                    await conn.execute(text("SELECT pg_advisory_unlock(hashtext(:k))"), key)
+                    await conn.commit()
 
     async def _write_once(self, batch: NormalizedBatch) -> WriteOutcome:
         async with self.engine.begin() as conn:
