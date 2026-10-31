@@ -11,21 +11,38 @@ from typing import Any
 
 from alembic import command
 from alembic.config import Config
+from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import Connection
+from alembic.util import CommandError
+from sqlalchemy import Connection, text
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.ext.asyncio import AsyncEngine
 
+from reflex_agentlens.core.errors import StorageUnavailable
+from reflex_agentlens.store.records import SchemaStatus
 from reflex_agentlens.store.schema import SEARCH_TABLE
 
 __all__ = [
+    "MIGRATE_LOCK_KEY",
+    "MIN_PG_VERSION_NUM",
+    "MIN_SQLITE_VERSION",
     "SCRIPT_LOCATION",
     "alembic_config",
+    "check_backend",
+    "current_revision",
     "downgrade",
     "head_revision",
     "include_object_for",
+    "migrate",
+    "read_schema_status",
+    "schema_status",
     "upgrade",
 ]
 
 SCRIPT_LOCATION = "reflex_agentlens.store:migrations"
+MIGRATE_LOCK_KEY = "agentlens:migrate"
+MIN_SQLITE_VERSION = (3, 43, 0)
+MIN_PG_VERSION_NUM = 150000
 
 
 def include_object_for(dialect: str) -> Callable[[Any, str | None, str, bool, Any], bool]:
@@ -74,3 +91,109 @@ def upgrade(connection: Connection, revision: str = "head") -> None:
 def downgrade(connection: Connection, revision: str = "base") -> None:
     """Development only: releases never downgrade (Data Model §5 policy)."""
     command.downgrade(alembic_config(connection), revision)
+
+
+# ── status (REQ-074.a-c) ─────────────────────────────────────────────────────────────────────
+
+
+def current_revision(connection: Connection) -> str | None:
+    """The revision stamped in ``alembic_version``; ``None`` for an empty database."""
+    return MigrationContext.configure(connection).get_current_revision()
+
+
+def schema_status(connection: Connection) -> SchemaStatus:
+    """Compare the database revision with the package head.
+
+    ``OUTDATED`` covers an empty database and any known older revision; a revision this package
+    does not know can only come from a newer release, hence ``NEWER`` (REQ-074.c).
+    """
+    current = current_revision(connection)
+    if current == head_revision():
+        return SchemaStatus.CURRENT
+    if current is None:
+        return SchemaStatus.OUTDATED
+    try:
+        known = ScriptDirectory.from_config(alembic_config()).get_revision(current)
+    except CommandError:
+        known = None
+    return SchemaStatus.OUTDATED if known is not None else SchemaStatus.NEWER
+
+
+async def read_schema_status(engine: AsyncEngine) -> SchemaStatus:
+    async with engine.connect() as conn:
+        return await conn.run_sync(schema_status)
+
+
+# ── guarded migration (REQ-074.a, REQ-074.d) ─────────────────────────────────────────────────
+
+
+async def migrate(engine: AsyncEngine) -> None:
+    """Upgrade to head. On PostgreSQL, under a session advisory lock (Data Model §5).
+
+    Concurrent callers queue on the lock; each then finds the schema at head and the upgrade is
+    a no-op, so every caller returns with a ``CURRENT`` schema. On SQLite only one process owns
+    the database, so the upgrade runs directly.
+    """
+    async with engine.connect() as conn:
+        locked = conn.dialect.name == "postgresql"
+        if locked:
+            await conn.execute(
+                text("SELECT pg_advisory_lock(hashtext(:k))"), {"k": MIGRATE_LOCK_KEY}
+            )
+            await conn.commit()
+        try:
+            await conn.run_sync(upgrade)
+            await conn.commit()
+        finally:
+            if locked:
+                await conn.rollback()
+                await conn.execute(
+                    text("SELECT pg_advisory_unlock(hashtext(:k))"), {"k": MIGRATE_LOCK_KEY}
+                )
+                await conn.commit()
+
+
+# ── backend version checks (TD §9.2) ─────────────────────────────────────────────────────────
+
+
+def _sqlite_version(connection: Connection) -> str:
+    return str(connection.exec_driver_sql("SELECT sqlite_version()").scalar_one())
+
+
+def _sqlite_has_fts5(connection: Connection) -> bool:
+    try:
+        connection.exec_driver_sql("CREATE VIRTUAL TABLE temp.agentlens_fts5_probe USING fts5(x)")
+    except OperationalError:
+        return False
+    connection.exec_driver_sql("DROP TABLE temp.agentlens_fts5_probe")
+    return True
+
+
+def _pg_version_num(connection: Connection) -> int:
+    return int(connection.exec_driver_sql("SHOW server_version_num").scalar_one())
+
+
+def _parse_version(version: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in version.split(".")[:3] if part.isdigit())
+
+
+def check_backend(connection: Connection) -> None:
+    """Refuse unsupported databases: SQLite ≥ 3.43 with FTS5, PostgreSQL ≥ 15.
+
+    Raises:
+        StorageUnavailable: with the reason, for an old version or a missing feature.
+    """
+    if connection.dialect.name == "sqlite":
+        version = _sqlite_version(connection)
+        if _parse_version(version) < MIN_SQLITE_VERSION:
+            raise StorageUnavailable(f"SQLite {version} is too old; 3.43 or newer is required")
+        if not _sqlite_has_fts5(connection):
+            raise StorageUnavailable("SQLite was built without FTS5, which search requires")
+        return
+    if connection.dialect.name == "postgresql":
+        num = _pg_version_num(connection)
+        if num < MIN_PG_VERSION_NUM:
+            major = num // 10000
+            raise StorageUnavailable(f"PostgreSQL {major} is too old; 15 or newer is required")
+        return
+    raise StorageUnavailable(f"unsupported database dialect {connection.dialect.name!r}")
