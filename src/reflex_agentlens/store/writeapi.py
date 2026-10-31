@@ -207,8 +207,8 @@ class BackendMethods(ReadMethods):
     async def save_filter(self, f: NewSavedFilter) -> SavedFilter:
         return await self._on_writer(settings.save_filter, f, self._clock())
 
-    async def delete_filter(self, filter_id: str) -> None:
-        await self._on_writer(settings.delete_filter, filter_id)
+    async def delete_filter(self, project_id: str, filter_id: str) -> None:
+        await self._on_writer(settings.delete_filter, project_id, filter_id)
 
     # ── derived-view maintenance (P2-08.3) ───────────────────────────────────────────────────
 

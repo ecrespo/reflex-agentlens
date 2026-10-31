@@ -152,10 +152,13 @@ async def test_saved_filters(db: ContractDB) -> None:
     assert (updated.created_at_ns, updated.updated_at_ns) == (NOW_NS, NOW_NS + 3)
     assert updated.created_by == "ana"
 
-    await backend.delete_filter(fid)
+    with pytest.raises(NotFound):  # through another Project: same answer as a missing filter
+        await backend.delete_filter(b, fid)
+    assert [f.name for f in await backend.list_saved_filters(a)] == ["all errors", "costly"]
+    await backend.delete_filter(a, fid)
     assert [f.name for f in await backend.list_saved_filters(a)] == ["costly"]
     with pytest.raises(NotFound):
-        await backend.delete_filter(fid)
+        await backend.delete_filter(a, fid)
     with pytest.raises(ValidationError):
         await backend.save_filter(NewSavedFilter(new_ulid(), a, " ", "x"))
     with pytest.raises(ValidationError):

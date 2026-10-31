@@ -321,6 +321,8 @@ def save_filter(conn: Connection, f: NewSavedFilter, now_ns: int) -> SavedFilter
     return _filter(row)
 
 
-def delete_filter(conn: Connection, filter_id: str) -> None:
-    if conn.execute(delete(sf).where(sf.c.id == filter_id)).rowcount == 0:
+def delete_filter(conn: Connection, project_id: str, filter_id: str) -> None:
+    """Only a filter of ``project_id``; one of another Project is ``NotFound`` (API v1.3.1)."""
+    pk = _project_pk(conn, project_id)
+    if conn.execute(delete(sf).where(sf.c.id == filter_id, sf.c.project_pk == pk)).rowcount == 0:
         raise NotFound("saved filter")
