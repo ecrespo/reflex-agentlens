@@ -249,7 +249,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **Done**: `uv sync --all-packages` and `uv lock --check` succeed; `uv run python -c "import reflex_agentlens"`
   succeeds; licenses of all runtime deps are in the Constitution allowlist (checked with
   `uvx pip-licenses` or equivalent, output attached to the PR).
-- [ ]
+- [~] 2026-10-31 · PR #6 (all Done checks pass; MPL-2.0 transitive deps `bidict`, `certifi` via Reflex await a Constitution licensing decision)
 
 ### P1-02.1 · Ruff and mypy configuration
 - **What**: Ruff lint rule set (incl. `S` bandit rules, `T20` no print outside `cli`), `ruff format`;
@@ -257,7 +257,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **REQ / design**: REQ-360.a, Art. 6
 - **Depends on**: P1-01.1
 - **Done**: `uv run ruff check`, `uv run ruff format --check` and `uv run mypy` pass with zero findings.
-- [ ]
+- [x] 2026-10-31 · PR #7
 
 ### P1-02.2 · Import contracts
 - **What**: `import-linter` contracts in `pyproject.toml`: the layers contract and every forbidden
@@ -268,7 +268,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **Depends on**: P1-01.1
 - **Done**: `uv run lint-imports` passes; a test that adds a temporary forbidden import (e.g.
   `import reflex` in `store`) makes it fail (documented in the PR).
-- [ ]
+- [x] 2026-10-31 · PR #7 (temporary `import reflex` in `store` breaks the contract)
 
 ### P1-02.3 · Pytest and coverage configuration
 - **What**: pytest config (`asyncio_mode = "auto"`, markers `pg`, `slow`, `smoke`, `docker`, test dirs
@@ -278,7 +278,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **Depends on**: P1-01.1
 - **Done**: `uv run pytest --cov` runs; the coverage gate is wired (verified by temporarily adding an
   untested function under `store/` and seeing the gate fail).
-- [ ]
+- [x] 2026-10-31 · PR #7 (temporary untested module under `store` fails the gate)
 
 ### P1-03.1 · CI: lint, types, tests
 - **What**: `.github/workflows/ci.yml` on PRs to `develop`/`main`: jobs `lint` (ruff + import-linter),
@@ -289,7 +289,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **Depends on**: P1-02.1, P1-02.2, P1-02.3
 - **Done**: a PR into `develop` shows all jobs green; a deliberate ruff violation in a throwaway
   branch makes `lint` fail.
-- [ ]
+- [~] 2026-10-31 · PR #8 (workflow added; first green run and the deliberate-violation check happen once the stack reaches `develop`)
 
 ### P1-03.2 · CI: security  [P]
 - **What**: `.github/workflows/security.yml` on every PR: gitleaks (full history on push, diff on PR),
@@ -298,7 +298,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **Depends on**: P1-01.1
 - **Done**: both jobs green on the PR; a fake `al_`/`AKIA…` test secret in a throwaway branch makes
   gitleaks fail.
-- [ ]
+- [~] 2026-10-31 · PR #8 (gitleaks and pip-audit green on the PR; fake-secret check pending)
 
 ### P1-04.1 · Repository guidance files  [P]
 - **What**: `CLAUDE.md` and `AGENTS.md` at the repo root (short; point at `specs/constitution.md`,
@@ -308,7 +308,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **REQ / design**: REQ-380.a (partial), Art. 10
 - **Depends on**: P1-01.1
 - **Done**: files present and reviewed; links resolve.
-- [ ]
+- [x] 2026-10-31 · PR #8
 
 ### P1-05.1 · Traceability script
 - **What**: `scripts/check_req_coverage.py`: parse every `REQ-NNN.x` criterion of a MUST requirement
@@ -320,7 +320,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **Depends on**: P1-02.3
 - **Done**: `uv run python scripts/check_req_coverage.py --report-only` lists every MUST criterion as
   uncited (expected at this point) and exits 0; its own tests pass.
-- [ ]
+- [x] 2026-10-31 · PR #8 (234 MUST criteria; 232 uncited, as expected)
 
 ### P1-06.1 · `core.errors`, `core.ids`, `core.timeutil`
 - **What**: The exception hierarchy of API §6.6; ID helpers (trace/span ID hex ↔ bytes, validation
@@ -328,7 +328,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **REQ / design**: API §6.6, REQ-010.a (ID validation rules), Data Model §1.3, Art. 5
 - **Depends on**: P1-02.1
 - **Done**: `uv run pytest tests/unit/core` green, tests citing REQ-010.a for ID validation; mypy strict clean.
-- [ ]
+- [x] 2026-10-31 · PR #9
 
 ### P1-06.2 · `core.money`  [P]
 - **What**: `Decimal` ↔ nano-USD `int` conversion (exact, with rounding rule documented), per-1M-token
@@ -336,7 +336,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **REQ / design**: Art. 5 (and its recorded interpretation), REQ-061.a, Data Model §2.0
 - **Depends on**: P1-02.1
 - **Done**: unit tests including round-trip property test with `hypothesis` and a `float` rejection test.
-- [ ]
+- [x] 2026-10-31 · PR #9
 
 ### P1-06.3 · `core.security`  [P]
 - **What**: API key generation (`al_<key_id>_<secret>`, ≥ 128 bits from `secrets`, format of API §3.4),
@@ -346,7 +346,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **Depends on**: P1-02.1
 - **Done**: tests citing REQ-320.b (prefix, entropy length, CSPRNG source) and REQ-320.a (hash never
   equals or contains the plaintext; wrong key fails; tampered signature fails).
-- [ ]
+- [x] 2026-10-31 · PR #9
 
 ### P1-07.1 · `core.config` models
 - **What**: pydantic-settings models for every section and key of API §8.2 (including A4
@@ -355,7 +355,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **REQ / design**: REQ-202, API §8.2, DD-019
 - **Depends on**: P1-06.1
 - **Done**: tests: defaults equal API §8.2; each invalid value raises an error naming the key.
-- [ ]
+- [x] 2026-10-31 · PR #9
 
 ### P1-07.2 · Configuration sources and unknown keys
 - **What**: Source chain defaults → TOML (`--config` / `AGENTLENS_CONFIG`, `tomllib`) → env
@@ -365,7 +365,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **Depends on**: P1-07.1
 - **Done**: tests citing REQ-202.a (precedence), REQ-202.b (unknown key in TOML and in env, error names
   key + source), REQ-202.c (`*_FILE` for each secret).
-- [ ]
+- [x] 2026-10-31 · PR #9
 
 ### P1-07.3 · Effective config rendering with secrets masked
 - **What**: Function that renders the effective configuration (TOML-like text) with every secret
@@ -373,7 +373,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **REQ / design**: REQ-202.d
 - **Depends on**: P1-07.2
 - **Done**: test citing REQ-202.d: secrets set via value and via `*_FILE` never appear in the output.
-- [ ]
+- [x] 2026-10-31 · PR #9
 
 ### P1-08.1 · `core.logging`
 - **What**: JSON formatter (ts, level, logger, event, allowlisted extras), content guard filter with
@@ -384,7 +384,7 @@ decisions; they do not replace the reference-machine benchmark (P8-06).
 - **Done**: tests citing REQ-341.a (valid JSON per line, required fields) and REQ-323.a (a canary
   string passed as a non-allowlisted extra and inside a normalizer exception message never appears in
   captured output).
-- [ ]
+- [x] 2026-10-31 · PR #9
 
 ---
 
