@@ -218,3 +218,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Reflex build artefacts and spike outputs
+.web/
+.states/
+spikes/**/export.log
+src/reflex_agentlens/_frontend/

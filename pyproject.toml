@@ -16,7 +16,12 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: System :: Monitoring",
 ]
-dependencies = []
+dependencies = [
+    "pydantic>=2",
+    "reflex>=0.10.1,<0.11",
+    "reflex-mermaidjs>=0.2.1,<0.3",
+    "reflex-silverpoint-react>=0.8.1,<0.9",
+]
 
 [project.urls]
 Repository = "https://github.com/ecrespo/reflex-agentlens"
