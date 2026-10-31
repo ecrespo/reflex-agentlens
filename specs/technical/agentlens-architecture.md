@@ -6,7 +6,7 @@
 |---|---|
 | **Author** | Ernesto Crespo (`ecrespo`) |
 | **Status** | `APPROVED` |
-| **Version** | 1.2 |
+| **Version** | 1.3 |
 | **Date** | 2026-10-31 |
 | **Related PRD** | [`specs/prd/agentlens-v0.1.md`](../prd/agentlens-v0.1.md) v1.0 |
 | **Related API Spec** | [`specs/api/agentlens-api-v1.md`](../api/agentlens-api-v1.md) v1.0 |
@@ -283,6 +283,29 @@ first 2,000 SpanNodes in DFS order are loaded into state, with subtrees deeper t
   tests verify. Cost per group is proportional to the size of the affected traces. Bounded
   because traces above 5,000 spans are recomputed incrementally in the same statement over
   indexed (`project_id`, `trace_id`) rows. Benchmarked in S2.
+- **Concurrency rule (Analyze A-01).** Recompute-from-scratch is order-independent only if no two
+  transactions recompute the same Run from different partial views. Under READ COMMITTED with
+  several writers (`collect` ×N, plus the finalizer, purge, rebuild and cost recompute), two
+  transactions can insert spans of the same trace concurrently, and the last commit would
+  overwrite the Run with a partial view. Therefore every transaction that changes the spans of a
+  Run, or recomputes it, SHALL:
+  1. **Lock the affected Runs first, in a deterministic order.** The write path creates or locks
+     the Run stubs in one statement, `INSERT … ON CONFLICT (project_pk, trace_id) DO UPDATE SET
+     updated_at_ns = excluded.updated_at_ns RETURNING pk, trace_id`, with the rows sorted by
+     (`project_pk`, `trace_id`). `DO UPDATE` takes the row lock that `DO NOTHING` does not. The
+     finalizer, purge, rebuild and cost recompute use `SELECT … FOR UPDATE` on `runs` in the same
+     order.
+  2. Insert spans and derived rows, then recompute the Runs. A transaction that waited on a lock
+     sees the spans the other committed, because every later statement takes a new snapshot.
+  3. **Lock the affected Sessions** (old and new `session_pk`s) with `SELECT … FROM sessions WHERE
+     pk IN (…) ORDER BY pk FOR UPDATE`, after the Runs, then recompute them.
+
+  Lock order is always Runs (by `project_pk`, `trace_id`) before Sessions (by `pk`), so these
+  transactions cannot deadlock with each other. If PostgreSQL still reports
+  `deadlock_detected` (40P01), for example against an admin operation, the writer retries the
+  whole group once, then fails its batches as retryable (503). SQLite needs no extra locking: one
+  process holds the only write connection (`BEGIN IMMEDIATE`), and `collect` requires
+  PostgreSQL. The P2 multi-writer contract test interleaves the **same** traces across writers.
 
 ### DD-005: Analytics engine, plain SQL without DuckDB (PRD Q2)
 
@@ -1016,3 +1039,4 @@ PRD v1.1 / API v1.1 edits in the same commit that approves this design.
 | 1.0 | 2026-10-30 | Ernesto Crespo | Approved. Amendments A1–A5, A7 applied (PRD v1.1, API v1.1, Constitution v1.1). A6 pending S1. Art. 7 interpretation confirmed |
 | 1.1.1 | 2026-10-31 | Ernesto Crespo (with Claude) | Analyze A-03: DD-005 PostgreSQL percentiles use `percentile_disc` (nearest-rank), matching Data Model Q8 |
 | 1.2 | 2026-10-31 | Ernesto Crespo (with Claude) | Spike results §11.1 (S1) and §11.2 (S2). DD-001 lifespan-started ingest thread. DD-002 consequence 1 resolved (env module rewrite), consequences 4–5 added; A6 dropped. DD-006 search normalization (A-15). DD-018 hashes over all exported HTML, from the shipped artifact. REQ-305 decision open (P0-10.1) |
+| 1.3 | 2026-10-31 | Ernesto Crespo (with Claude) | Analyze A-01: DD-004 concurrency rule (lock Runs then Sessions in a deterministic order; `ON CONFLICT DO UPDATE` stubs; one retry on deadlock) |

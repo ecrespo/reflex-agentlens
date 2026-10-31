@@ -6,7 +6,7 @@
 |---|---|
 | **Author** | Ernesto Crespo (`ecrespo`) |
 | **Status** | `APPROVED` |
-| **API version** | v1.1 (ships with package 0.1.0) |
+| **API version** | v1.2 (ships with package 0.1.0) |
 | **Date** | 2026-10-30 |
 | **Related PRD** | [`specs/prd/agentlens-v0.1.md`](../prd/agentlens-v0.1.md) v1.1 |
 | **Governed by** | [`specs/constitution.md`](../constitution.md) v1.0 |
@@ -257,6 +257,12 @@ third-party implementations until v1.0. Internal callers rely on it as stable wi
 Every backend SHALL pass `tests/contract/` [REQ-070.b]. Entity field definitions live in the
 Data Model. Here only the names and method semantics are fixed.
 
+The input and return types named below (`RunSummary`, `TraceDetail`, `Kpis`, …) are
+**`store.records` frozen dataclasses** with storage-level fields (IDs as bytes or ULID strings,
+money as `int` nano-USD, times as `int` ns). `store` cannot import `query`, so `query.dto` builds
+the Pydantic DTOs of §6 from them with the Data Model §8 conversions (same names, different
+modules).
+
 ```python
 class StorageBackend(Protocol):
     # ── lifecycle ─────────────────────────────────────────────────────────
@@ -285,6 +291,7 @@ class StorageBackend(Protocol):
     async def list_runs(self, q: RunQuery) -> Page[RunSummary]: ...
     async def find_runs_by_trace_id(self, project_ids: ProjectScope, trace_id: str) -> list[RunKey]: ...
     async def get_trace(self, key: RunKey) -> TraceDetail | None: ...
+    async def get_span_raw(self, key: RunKey, span_id: str) -> SpanRaw | None: ...         # Data Model Q5b [REQ-151.e]
     async def list_llm_calls(self, key: RunKey) -> list[LLMCallView]: ...
     async def list_sessions(self, q: SessionQuery) -> Page[SessionSummary]: ...
     async def get_session(self, project_ids: ProjectScope, session_id: str) -> SessionDetail | None: ...
@@ -415,6 +422,7 @@ DTOs are frozen Pydantic v2 models (JSON-serializable, Reflex-state friendly). M
 | `resolve_trace(viewer, trace_id, project_slug: str \| None = None)` | `list[RunRef]` (0 = not found, >1 = disambiguation) | 103 |
 | `get_trace(viewer, run: RunRef)` | `TraceDetail` (raises `NotFound`) | 103 |
 | `list_llm_calls(viewer, run: RunRef)` | `list[LLMCallView]`, the stable normalized I/O shape | 104 |
+| `get_span_raw(viewer, run: RunRef, span_id: str)` | `SpanRaw` (raises `NotFound`), loaded lazily by the span drawer's raw tab | 151.e |
 | `list_sessions(viewer, filter: SessionFilter, sort: SessionSort, cursor, limit)` | `Page[SessionSummary]` | 105.a |
 | `get_session(viewer, session_id)` | `SessionDetail` | 105.b |
 | `dashboard(viewer, scope: AggScope)` | `DashboardData` (all REQ-106 aggregates, fetched concurrently) | 106, 141 |
@@ -470,6 +478,18 @@ class AgentGraph(BaseModel):            # [REQ-153]
     edges: list[GraphEdge]              # source, target, taken: bool, count
     collapsed: bool                     # >150 nodes collapsed [REQ-153.d]
     fallback_sequence: bool             # no graph nodes → tool/LLM sequence [REQ-153.e]
+```
+
+```python
+class SpanRaw(BaseModel):               # raw view of one span after redaction [REQ-030.b, REQ-151.e]
+    span_id: str
+    attributes: dict[str, AttrValue]    # typed values per Data Model §1.4
+    resource: dict[str, AttrValue]
+    scope_name: str | None; scope_version: str | None
+    events: list[SpanEventRaw]          # name, time_ns, attributes
+    links: list[SpanLinkRaw]            # trace_id, span_id, attributes
+    dropped_keys: list[str]             # removed by the content toggle (spans.dropped_keys) [REQ-040]
+    # truncated values carry the REQ-041 marker inside the value itself (Data Model §1.4)
 ```
 
 `AgentGraph` is data. Mermaid text is produced by `components` from it, so `query` stays free of
@@ -850,3 +870,4 @@ When stdout is not a TTY, the key line is replaced by
 | 1.0-draft.1 | 2026-10-30 | Initial draft |
 | 1.0 | 2026-10-30 | Approved by Ernesto Crespo |
 | 1.1 | 2026-10-30 | Tech Design amendments A3 (Starlette, not FastAPI), A4 (`server.public_url`, `server.ingest_enabled`), A5 (CSP) |
+| 1.2 | 2026-10-31 | Analyze A-06: `get_span_raw` added to `StorageBackend` and `QueryService`, with the `SpanRaw` DTO. Every protocol method is owned by exactly one Tasks entry (P2 detailing). §5: protocol types are `store.records` dataclasses; §6 DTOs are built from them in `query` |

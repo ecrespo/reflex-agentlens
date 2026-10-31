@@ -6,7 +6,7 @@
 |---|---|
 | **Author** | Ernesto Crespo (`ecrespo`) |
 | **Status** | `APPROVED` |
-| **Version** | 1.0.1 |
+| **Version** | 1.1 |
 | **Date** | 2026-10-31 |
 | **Databases** | SQLite ≥ 3.43 (FTS5, JSON1, window functions, contentless-delete FTS) · PostgreSQL ≥ 15 (CI: 15, 18) |
 | **Related Tech Design** | [`specs/technical/agentlens-architecture.md`](../technical/agentlens-architecture.md) v1.0 |
@@ -578,6 +578,10 @@ last 500 rows.
 
 ### 2.19 Conditional: `rollup_hourly` (only if spike S2 fails REQ-305)
 
+> **Status: not adopted** (spike S2, P0-10.1; Delta Spec `changes/2026-10-req-305-percentile-budget/`).
+> Kept as the reserved design for DD-005 ladder step 1, reopened only if the reference-machine
+> benchmark misses REQ-305.b.
+
 Reserved design, created by a later migration `0002_rollups` **only** if S2 adopts ladder step 1
 (TD DD-005). It would be maintained by the writer for newly inserted rows and decremented by
 purge:
@@ -703,9 +707,11 @@ aggregate across rows (Art. 6 applies to dashboard aggregates).
 ### Q6: Write path, Run stub and span insert [REQ-038, API §5.1]
 
 ```sql
-INSERT INTO runs (project_pk, trace_id, start_ns, last_span_ns, status)
-VALUES … ON CONFLICT (project_pk, trace_id) DO NOTHING;
-SELECT pk, trace_id FROM runs WHERE project_pk = :p AND trace_id = ANY(:trace_ids);
+-- Rows sorted by (project_pk, trace_id): creates missing stubs AND row-locks existing Runs (DD-004
+-- concurrency rule, Analyze A-01). DO NOTHING would not lock an existing row.
+INSERT INTO runs (project_pk, trace_id, start_ns, last_span_ns, status, updated_at_ns)
+VALUES … ON CONFLICT (project_pk, trace_id) DO UPDATE SET updated_at_ns = excluded.updated_at_ns
+RETURNING pk, trace_id;
 INSERT INTO spans (…) VALUES … ON CONFLICT (run_pk, span_id) DO NOTHING RETURNING pk, run_pk, span_id;
 -- per-span derived rows inserted only for RETURNed spans; duplicates = sent − returned
 ```
@@ -751,8 +757,10 @@ UPDATE runs r SET
   updated_at_ns = :now_ns
 FROM agg LEFT JOIN root USING (run_pk) LEFT JOIN llm USING (run_pk) …
 WHERE r.pk = agg.run_pk;
--- Then sessions: recompute run_count/first/last/tokens/cost/includes_unpriced for affected session_pks
--- (old and new) from runs. Index: uq_spans_run_span, ix_llm_run, ix_tool_run, ix_runs_session_start
+-- Then sessions: lock the affected session_pks (old and new) with
+--   SELECT pk FROM sessions WHERE pk IN (…) ORDER BY pk FOR UPDATE   (PG; DD-004 concurrency rule)
+-- and recompute run_count/first/last/tokens/cost/includes_unpriced from runs.
+-- Index: uq_spans_run_span, ix_llm_run, ix_tool_run, ix_runs_session_start
 ```
 
 The exact statements are dialect-specific and unit-tested against a Python reference
@@ -839,8 +847,10 @@ FROM metric_points WHERE project_pk = ANY(:p) AND name IN (:token_metric_names)
 ### Q12: Finalizer [REQ-032.b]
 
 ```sql
-SELECT pk FROM runs WHERE status = 'in_progress' AND last_span_ns < :now_ns - :window_ns LIMIT 500;
+SELECT pk FROM runs WHERE status = 'in_progress' AND last_span_ns < :now_ns - :window_ns
+ORDER BY project_pk, trace_id LIMIT 500 FOR UPDATE SKIP LOCKED;     -- PG; SQLite: plain SELECT
 -- → Q7 recompute for those run_pks (flips to 'incomplete'); publish runs_finalized
+-- SKIP LOCKED: a Run a writer holds is being recomputed by that writer anyway
 -- Index: ix_runs_inprogress (partial)
 ```
 
@@ -850,7 +860,10 @@ SELECT pk FROM runs WHERE status = 'in_progress' AND last_span_ns < :now_ns - :w
 -- age, per project with retention_max_age_s > 0
 SELECT pk FROM runs WHERE project_pk = :p AND last_span_ns < :now_ns - :max_age_ns
 ORDER BY last_span_ns LIMIT :batch;                        -- Index: ix_runs_project_last
+SELECT pk FROM runs WHERE pk = ANY(:batch_pks)
+ORDER BY project_pk, trace_id FOR UPDATE;                  -- PG: DD-004 lock order (A-01)
 DELETE FROM runs WHERE pk = ANY(:batch_pks);               -- cascades to spans, derived rows, search
+-- then lock + recompute the Sessions those runs belonged to (Q7 session step)
 -- size: usage = (SELECT sum(bytes_est) FROM runs) + metric estimate;
 -- while usage > limit: delete the globally oldest runs by last_span_ns (batch), until ≤ 90 % of limit
 -- afterwards: delete sessions with no runs, orphan resources; SQLite: PRAGMA incremental_vacuum(N)
@@ -879,9 +892,12 @@ FROM api_keys k JOIN projects p ON p.pk = k.project_pk WHERE k.key_id = :key_id;
   - `INCLUDE` columns (PG only; SQLite gets extended key columns)
   - `BOOL`/`JSON` mappings
 
-  It also inserts `app_meta.instance_id`/`created_at_ns` and pricing version 1 from the
-  bundled `data/pricing.csv` (REQ-060.b). The `default` Project and its key are **not** created
-  in the migration; the first-run bootstrap does that (REQ-201).
+  It also inserts `app_meta.instance_id`/`created_at_ns`. **Pricing version 1 is not loaded by
+  the migration** (Analyze A-11): the first-run bootstrap loads it when `pricing_versions` is
+  empty, from `[pricing] file` or the bundled `data/pricing.csv` (REQ-060.b, API §8.2), through
+  `save_pricing(…, author="bootstrap")`, in the same startup step that creates the `default`
+  Project and its key (REQ-201). Until then ingest marks calls `unpriced`, which cannot happen in
+  practice because bootstrap runs before the receivers start.
 - **Policy:**
   - Forward-only within 0.x. Every migration has a `downgrade()` for development, but releases
     do not support downgrades: a newer schema means exit 4 (REQ-074.c).
@@ -994,3 +1010,4 @@ integers).
 | 1.0-draft.1 | 2026-10-30 | Ernesto Crespo (with Claude) | Initial draft |
 | 1.0 | 2026-10-30 | Ernesto Crespo | Approved. Notes N1–N4 applied (Tech Design v1.1, Constitution amendments) |
 | 1.0.1 | 2026-10-31 | Ernesto Crespo (with Claude) | From spike S2: percentile rank computed in double precision (parity), one-sort multi-percentile form; search document normalized before indexing (DD-006) |
+| 1.1 | 2026-10-31 | Ernesto Crespo (with Claude) | Analyze A-01: Q6 Run stubs via `ON CONFLICT DO UPDATE … RETURNING` in sorted order (row locks), Session locks before recompute, finalizer `FOR UPDATE SKIP LOCKED`. A-11: pricing seed moved from `0001_initial` to first-run bootstrap. A-09: §2.19 not adopted |
