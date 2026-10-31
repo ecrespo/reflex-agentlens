@@ -1,6 +1,6 @@
 # Constitution — reflex-agentlens
 
-> Version 1.1 · Status: **Ratified** · Ratified: 2026-10-30 · Last amendment: 2026-10-30
+> Version 1.2 · Status: **Ratified** · Ratified: 2026-10-30 · Last amendment: 2026-10-31
 > Scope: `github.com/ecrespo/reflex-agentlens` — the `reflex_agentlens` package, the CLI,
 > the container image, the `site/` app, `docs/`, CI, and every artifact under `specs/` and `changes/`.
 > Rigor level: **spec-anchored** (specs live in the repo and are the current truth;
@@ -176,7 +176,7 @@ Technical Design. "verify" means checking the current stable release at that tim
 | Delivery | Multi-stage `Dockerfile` (non-root, healthcheck); `compose.yaml` (single container + SQLite volume); `compose.postgres.yaml` (app + collector + PostgreSQL + Caddy/TLS); image `ghcr.io/ecrespo/reflex-agentlens` pushed on tag |
 | CI | GitHub Actions: lint, type-check, tests (matrix + Postgres service container), import contracts, secret scan, dependency audit, Docker build + healthcheck |
 | Docs / site | MkDocs Material under `docs/`; `site/` is a separate Reflex app with a read-only live demo |
-| Licensing | Project is MIT. Runtime dependencies SHALL be under permissive licenses compatible with MIT (MIT, BSD, Apache-2.0, ISC, PSF) |
+| Licensing | Project is MIT. Runtime dependencies SHALL be under permissive licenses compatible with MIT (MIT, BSD, Apache-2.0, ISC, PSF). MPL-2.0 is allowed only for **transitive** dependencies used unmodified (file-level copyleft: nothing to disclose unless MPL files are changed) |
 | Forbidden in v0.x | Any *required* Redis/Kafka/ClickHouse/broker/external cache; any charting library other than silverpoint; any graph renderer other than mermaidjs; per-framework SDK adapters |
 
 ## Versioning horizon
@@ -198,6 +198,7 @@ Amendments require a PR that changes this file, a row in the table below, and a 
 | 2026-10-30 | Stack constraints | v1.1 (clarification): Reflex backend is Starlette, not FastAPI | Reflex 0.10 dropped FastAPI (Tech Design A3) | Ernesto Crespo |
 | 2026-10-30 | Art. 5 | Interpretation recorded: money stored as fixed-point `BIGINT` nano-USD on both backends (SQLite has no exact NUMERIC); always `Decimal` in Python | Approved with Data Model N3 | Ernesto Crespo |
 | 2026-10-30 | Art. 7 | Interpretation recorded: the trace waterfall / replay timeline is a tabular tree component, not a chart | Approved with Tech Design DD-017 | Ernesto Crespo |
+| 2026-10-31 | Stack constraints | v1.2 (clarification): MPL-2.0 allowed for unmodified transitive dependencies | Reflex pulls in `bidict` (via python-socketio) and `certifi` (via httpx), both MPL-2.0; found by the P1-01.1 license check | Ernesto Crespo |
 
 ## Constitution check (to be appended to every artifact)
 

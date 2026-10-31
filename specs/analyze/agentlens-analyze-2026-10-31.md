@@ -85,3 +85,14 @@ The Analyze presents findings only; approval is the maintainer's.
 | A-15 | Scheduled | 2026-10-31 | Tasks v1.0.1: new spike task P0-09.3; rule decided in the S2 report |
 | A-16 | Scheduled | 2026-10-31 | Tasks v1.0.1: new spike task P0-05.3; scoping decided in the S1 report |
 | Others | Open | — | Due before the phase named in the Verdict |
+
+## Resolutions (2026-10-31, before P2)
+
+| Finding | Resolution |
+|---|---|
+| A-01 | Tech Design v1.3 DD-004 concurrency rule; Data Model v1.1 Q6/Q7/Q12/Q13; multi-writer test P2-06.2 |
+| A-06 | API v1.2 `get_span_raw` + `SpanRaw`; protocol-method ownership table in Tasks v1.1 (P2) |
+| A-09 | Moot: rollups not adopted (Delta Spec `changes/2026-10-req-305-percentile-budget/`); Data Model §2.19 marked |
+| A-11 | Data Model v1.1 §5: pricing seed moved from `0001_initial` to the first-run bootstrap |
+| A-05 (storage side) | Protocol types are `store.records` dataclasses (API v1.2 §5); Pydantic DTO fields stay for P4 |
+
