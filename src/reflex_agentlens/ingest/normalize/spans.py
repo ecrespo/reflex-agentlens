@@ -21,6 +21,7 @@ from opentelemetry.proto.trace.v1.trace_pb2 import Span
 
 from reflex_agentlens.core.semconv import constants as k
 from reflex_agentlens.store.attrs import (
+    B64_KEY,
     JsonValue,
     attributes_to_json,
     attrs_hash,
@@ -150,8 +151,13 @@ def _map_value(value: JsonValue, fn: Callable[[str], str]) -> JsonValue:
     if isinstance(value, list):
         return [_map_value(v, fn) for v in value]
     if isinstance(value, dict):
-        if set(value) == {"$b64"}:  # bytes value (store.attrs codec): not text
-            return value
+        b64 = value.get(B64_KEY)
+        if len(value) == 1 and isinstance(b64, str):
+            # A bytes value (store.attrs codec), or a kvlist that only looks like one. Its text
+            # still goes through ``fn`` so neither redaction nor truncation can be bypassed; if
+            # ``fn`` changes it, the result replaces the whole value as a string (fail closed).
+            new = fn(b64)
+            return value if new == b64 else new
         return {key: _map_value(v, fn) for key, v in value.items()}
     return value
 
