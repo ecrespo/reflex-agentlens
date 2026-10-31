@@ -15,22 +15,28 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Literal
+from typing import Generic, Literal, TypeVar
 
 from reflex_agentlens.store.attrs import JsonValue
 
 __all__ = [
     "CHANGE_EVENT_MAX_RUN_KEYS",
+    "DEFAULT_PAGE_SIZE",
+    "MAX_PAGE_SIZE",
     "ApiKeyRecord",
     "ApprovalDecision",
     "ApprovalKind",
     "ApprovalRow",
+    "AttrPredicate",
+    "AttrScope",
     "ChangeEvent",
     "ChangeKind",
+    "FacetField",
     "GraphNodeRow",
     "IngestSettings",
     "JsonObject",
     "LLMCallRow",
+    "LLMCallView",
     "MetricKind",
     "MetricPoint",
     "NewApiKeyRecord",
@@ -39,6 +45,7 @@ __all__ = [
     "NormalizedBatch",
     "NormalizedSpan",
     "OkError",
+    "Page",
     "PricingEntry",
     "PricingSource",
     "PricingVersion",
@@ -48,18 +55,26 @@ __all__ = [
     "ProjectScope",
     "PurgeReport",
     "PurgeTrigger",
+    "Range",
     "RedactionRuleSet",
     "ResourceIn",
+    "RunCursor",
     "RunKey",
+    "RunQuery",
+    "RunSort",
     "RunStatus",
+    "RunSummary",
     "SavedFilter",
     "SchemaStatus",
     "SessionKey",
     "SourceKey",
+    "SourceView",
     "SpanCategory",
     "SpanRaw",
     "TimeRange",
     "ToolCallRow",
+    "TraceDetail",
+    "TraceSpan",
     "WriteResult",
 ]
 
@@ -74,6 +89,7 @@ PurgeTrigger = Literal["scheduled", "manual"]
 ChangeKind = Literal["spans_committed", "runs_finalized", "purged", "settings_changed"]
 
 JsonObject = dict[str, JsonValue]
+T = TypeVar("T")
 
 
 class SchemaStatus(StrEnum):
@@ -497,3 +513,152 @@ class ChangeEvent:
             truncated=len(run_keys) > CHANGE_EVENT_MAX_RUN_KEYS,
             committed_at_ns=committed_at_ns,
         )
+
+
+# ── reads: runs and traces (P2-07.1; Data Model Q1-Q5b) ──────────────────────────────────────
+
+RunSort = Literal[
+    "start_desc", "start_asc", "duration_desc", "duration_asc",
+    "tokens_desc", "tokens_asc", "cost_desc", "cost_asc",
+]  # fmt: skip
+FacetField = Literal["model", "tool", "status", "source", "agent"]
+AttrScope = Literal["root", "resource"]
+MAX_PAGE_SIZE = 200
+DEFAULT_PAGE_SIZE = 50
+
+
+@dataclass(frozen=True, slots=True)
+class RunCursor:
+    """Keyset position: the sort key of the last row plus its natural key (API §6.2)."""
+
+    sort_value: int
+    trace_id: bytes
+    project_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class Range:
+    """Inclusive range; ``None`` ends are open."""
+
+    min: int | None = None
+    max: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AttrPredicate:
+    """Equality (``value`` given) or existence (``value`` None) of a root-span/resource key."""
+
+    key: str
+    scope: AttrScope = "root"
+    op: Literal["eq", "exists"] = "eq"
+    value: JsonValue = None
+
+
+@dataclass(frozen=True, slots=True)
+class RunQuery:
+    """Storage-level form of API §6.2 ``RunFilter`` plus sort, cursor and limit."""
+
+    project_ids: ProjectScope
+    sources: tuple[SourceKey, ...] = ()
+    time_range: TimeRange | None = None
+    statuses: tuple[RunStatus, ...] = ()
+    is_genai: bool | None = None
+    models: tuple[str, ...] = ()
+    tools: tuple[str, ...] = ()
+    duration_ns: Range | None = None
+    tokens: Range | None = None
+    cost_nusd: Range | None = None
+    include_unpriced_in_cost_range: bool = False
+    attributes: tuple[AttrPredicate, ...] = ()
+    text: str | None = None
+    session_id: str | None = None
+    sort: RunSort = "start_desc"
+    cursor: RunCursor | None = None
+    limit: int = DEFAULT_PAGE_SIZE
+
+
+@dataclass(frozen=True, slots=True)
+class Page(Generic[T]):
+    items: list[T]
+    next_cursor: RunCursor | None
+
+
+@dataclass(frozen=True, slots=True)
+class RunSummary:
+    """One Run (REQ-100.b) at storage level."""
+
+    project_id: str
+    trace_id: bytes
+    start_ns: int
+    end_ns: int | None
+    duration_ns: int | None
+    last_span_ns: int
+    status: RunStatus
+    root_name: str | None
+    agent_name: str | None
+    source: SourceKey | None
+    source_count: int
+    models: list[str]
+    input_tokens: int
+    output_tokens: int
+    cached_input_tokens: int
+    usage_source: Literal["llm", "agent", "none"]
+    cost_nusd: int | None
+    unpriced_calls: int
+    llm_calls: int
+    tool_calls: int
+    error_spans: int
+    span_count: int
+    missing_parents: int
+    session_id: str | None
+    is_genai: bool
+
+    @property
+    def key(self) -> RunKey:
+        return RunKey(self.project_id, self.trace_id)
+
+
+@dataclass(frozen=True, slots=True)
+class TraceSpan:
+    """One span of a trace with its derived rows (Data Model Q5); tree assembly is in ``query``."""
+
+    span_id: bytes
+    parent_span_id: bytes | None
+    name: str
+    category: SpanCategory
+    otel_kind: int
+    start_ns: int
+    end_ns: int
+    status_code: int
+    status_message: str | None
+    flags: int
+    source: SourceKey
+    agent_name: str | None
+    llm_call: LLMCallRow | None
+    tool_call: ToolCallRow | None
+    approval: ApprovalRow | None
+    graph_node: GraphNodeRow | None
+
+
+@dataclass(frozen=True, slots=True)
+class TraceDetail:
+    run: RunSummary
+    spans: list[TraceSpan]
+
+
+@dataclass(frozen=True, slots=True)
+class LLMCallView:
+    """An LLM call plus its span's raw attributes and events, to normalize messages (REQ-104)."""
+
+    span_id: bytes
+    call: LLMCallRow
+    attributes: JsonObject
+    events: list[JsonValue]
+
+
+@dataclass(frozen=True, slots=True)
+class SourceView:
+    project_id: str
+    source: SourceKey
+    first_seen_ns: int
+    last_seen_ns: int
