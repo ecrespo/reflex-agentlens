@@ -10,7 +10,6 @@ from typing import Any
 import pytest
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
-from seed import counts, seed_project
 from sqlalchemy import Connection, Engine, create_engine, inspect, text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
@@ -19,6 +18,7 @@ from reflex_agentlens.core.ids import is_ulid
 from reflex_agentlens.store import migrate
 from reflex_agentlens.store import schema as s
 from reflex_agentlens.store.records import SchemaStatus
+from tests.unit.store.seed import counts, seed_project
 
 
 def _diff(conn: Connection) -> list[Any]:

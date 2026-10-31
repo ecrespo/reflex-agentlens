@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import pytest
-from seed import NS, PROJECT_TABLES, counts, seed_project
 from sqlalchemy import Connection, Engine, delete, inspect, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from reflex_agentlens.store import schema as s
+from tests.unit.store.seed import NS, PROJECT_TABLES, counts, seed_project
 
 TABLES = {
     "app_meta", "projects", "api_keys", "redaction_rule_sets", "pricing_versions",
