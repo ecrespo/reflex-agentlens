@@ -1,0 +1,17 @@
+[project]
+name = "agentlens-site"
+version = "0.0.0"
+description = "Project website for reflex-agentlens (embeds agentlens pages). Not published."
+requires-python = ">=3.11"
+classifiers = ["Private :: Do Not Upload"]
+dependencies = ["reflex-agentlens"]
+
+[tool.uv.sources]
+reflex-agentlens = { workspace = true }
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agentlens_site"]

@@ -16,7 +16,27 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: System :: Monitoring",
 ]
-dependencies = []
+dependencies = [
+    "reflex>=0.10.1,<0.11",
+    "reflex-silverpoint-react>=0.8.1,<0.9",
+    "reflex-mermaidjs>=0.2.1,<0.3",
+    "opentelemetry-proto>=1.45.2,<2",
+    "grpcio>=1.85.1,<2",
+    "sqlalchemy[asyncio]>=2.0,<2.1",
+    "alembic>=1.20.1,<2",
+    "aiosqlite>=0.22.1",
+    "asyncpg>=0.32.0",
+    "pydantic>=2",
+    "pydantic-settings>=2",
+    "regex>=2024",
+]
+
+[project.optional-dependencies]
+selftelemetry = [
+    "opentelemetry-sdk>=1.45.2,<2",
+    "opentelemetry-exporter-otlp-proto-http>=1.45.2,<2",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.45.2,<2",
+]
 
 [project.urls]
 Repository = "https://github.com/ecrespo/reflex-agentlens"
@@ -36,17 +56,33 @@ packages = ["src/reflex_agentlens"]
 
 [dependency-groups]
 dev = [
+    "coverage[toml]>=7",
+    "hypothesis>=6",
+    "import-linter>=2",
+    "mypy>=1.13",
+    "playwright>=1.48",
     "pytest>=8",
+    "pytest-asyncio>=0.24",
     "ruff>=0.8",
+]
+docs = [
+    "mkdocs-material>=9.5",
+]
+bench = [
+    "opentelemetry-sdk>=1.45.2,<2",
+    "opentelemetry-exporter-otlp-proto-http>=1.45.2,<2",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.45.2,<2",
 ]
 
 [tool.uv.workspace]
-members = []
+members = ["site", "examples"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py311"
 src = ["src", "tests"]
+# Specs are documentation; their code blocks are illustrative, not formatted source.
+extend-exclude = ["specs", "changes"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "S", "T20"]
