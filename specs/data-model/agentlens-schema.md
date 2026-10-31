@@ -6,8 +6,8 @@
 |---|---|
 | **Author** | Ernesto Crespo (`ecrespo`) |
 | **Status** | `APPROVED` |
-| **Version** | 1.0 |
-| **Date** | 2026-10-30 |
+| **Version** | 1.0.1 |
+| **Date** | 2026-10-31 |
 | **Databases** | SQLite ≥ 3.43 (FTS5, JSON1, window functions, contentless-delete FTS) · PostgreSQL ≥ 15 (CI: 15, 18) |
 | **Related Tech Design** | [`specs/technical/agentlens-architecture.md`](../technical/agentlens-architecture.md) v1.0 |
 | **Related API Spec** | [`specs/api/agentlens-api-v1.md`](../api/agentlens-api-v1.md) v1.1 |
@@ -515,7 +515,8 @@ rows plus the span parent chain.
   for the run join.
 
 Document = span name + message text parts + tool arguments/results + error/exception messages,
-post-redaction, ≤ 32 KiB, built in the ingest normalizer. Non-GenAI spans index name and status
+post-redaction, ≤ 32 KiB, built in the ingest normalizer and stored **after**
+`search_normalize` (TD DD-006: NFKD, no diacritics, lowercase, non-alphanumerics → space). Non-GenAI spans index name and status
 message only.
 
 ### 2.16 `metric_points`
@@ -773,7 +774,10 @@ FROM runs WHERE project_pk = ANY(:projects) AND start_ns >= :from AND start_ns <
 ```
 
 **Percentile definition (both backends):** nearest-rank, `percentile_disc` semantics
-(value at rank ⌈p·N⌉). SQLite computes it as
+(value at rank ⌈p·N⌉, with the product computed in **IEEE double precision** exactly as PostgreSQL
+does: `0.95 × 20 = 19.000000000000004 → rank 20`). Several percentiles of one value are computed in
+one sort (`percentile_disc(ARRAY[…])` on PG, one window with conditional picks on SQLite; S2).
+SQLite computes it as
 `ROW_NUMBER() OVER (PARTITION BY g ORDER BY d)` compared with `ceil(p * count(*) OVER (PARTITION BY g))`,
 and the `percentile_sql(p, value, group)` builder emits the right form per dialect. Contract tests
 assert exact equality across backends.
@@ -989,3 +993,4 @@ integers).
 |---|---|---|---|
 | 1.0-draft.1 | 2026-10-30 | Ernesto Crespo (with Claude) | Initial draft |
 | 1.0 | 2026-10-30 | Ernesto Crespo | Approved. Notes N1–N4 applied (Tech Design v1.1, Constitution amendments) |
+| 1.0.1 | 2026-10-31 | Ernesto Crespo (with Claude) | From spike S2: percentile rank computed in double precision (parity), one-sort multi-percentile form; search document normalized before indexing (DD-006) |
