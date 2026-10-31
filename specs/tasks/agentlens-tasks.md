@@ -696,7 +696,7 @@ first or in the same commit (Art. 8). Branches: `feat/P3-<nn>-<slug>` from `deve
 - **Depends on**: P3-01.1
 - **Done**: protobuf and JSON of the same request decode to equal spans; one test per rejection
   reason; the message lists counts per reason in a stable order.
-- [ ]
+- [x] 2026-10-31 · PR #18
 
 ### P3-02.2 · Span normalization: Source, attributes, truncation, classification
 - **What**: `normalize/spans.py`: Source identification (`service.name` + namespace,
@@ -707,7 +707,7 @@ first or in the same commit (Art. 8). Branches: `feat/P3-<nn>-<slug>` from `deve
 - **Depends on**: P3-01.2, P3-02.1
 - **Done**: raw attributes round-trip; truncated values carry the marker and set the flag; one
   classification test per rule; generic (non-GenAI) spans keep their raw data.
-- [ ]
+- [x] 2026-10-31 · PR #18
 
 ### P3-03.1 · LLMCall derivation and token totals
 - **What**: `normalize/llm.py`: provider, request/response model, tokens (incl. cached, cache
@@ -750,7 +750,7 @@ first or in the same commit (Art. 8). Branches: `feat/P3-<nn>-<slug>` from `deve
 - **Depends on**: P3-02.1
 - **Done**: positive/negative fixtures per preset; Luhn; a catastrophic pattern times out and
   redacts; canary: a secret straddling the truncation limit leaves no prefix (A-07).
-- [ ]
+- [x] 2026-10-31 · PR #18
 
 ### P3-04.2 · Redaction hook, content drop, preview
 - **What**: `redaction/hook.py` (`module:function`, called after the rules; raise → span rejected
@@ -1097,6 +1097,7 @@ the matrix). No requirement is deferred at this point.
 | 2026-10-31 | P2-10.1, 10.2, 11.1 | Done | PR #15; change feed (after-commit publish, PG NOTIFY in the commit transaction, LISTEN with origin/namespace filtering, fingerprint polling fallback); parity SQLite↔PG on runs, search sets, aggregates, percentiles, Sessions; `scripts/check_upgrade_head.py` in CI. **P2 gate**: 681 passed, `store` coverage 95 %. Finding: tied Sessions are ordered by the Session ULID (surrogate), so tie order differs across databases |
 | 2026-10-31 | P3 prep | Done | PR #16; Delta `changes/2026-10-p3-ingest-prep/` (A-04, A-07, A-08, A-17) folded; P3 detailed |
 | 2026-10-31 | P3-01.1, 01.2, 01.3 | Done | PR #17; `SEMCONV_GENAI_COMMIT` = `6f98aef` (genai repo `main`, no release; closes Q-T2); mapping table + classification + dialects; messages normalizer (5 forms). Security review: JSON `RecursionError`, bounded list indices, content-drop prefixes widened beyond Tech Design §5.3 (fold later) |
+| 2026-10-31 | P3-02.1, 02.2, 04.1 | Done | PR #18; OTLP decode (protobuf/JSON, hex IDs), validation + `partialSuccess`; span drafts, truncation, classification; redaction presets (linear-time email), pattern/field rules, fail-closed timeouts, A-07 canary. Security review: `$b64`-shaped kvlists no longer bypass redaction/truncation |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).
