@@ -4,9 +4,6 @@ Every contract test receives ``db``, parametrized over the backends: ``sqlite`` 
 when ``AGENTLENS_TEST_PG_URL`` is set. Each test gets a fresh, migrated database (SQLite: a copy
 of a migrated template file; PostgreSQL: a new schema), which isolates tests more strictly than
 one database per module at a small cost. Time is injected through ``db.clock``.
-
-Until the PostgreSQL backend lands (P2-06.1), ``pg`` provides only the migrated engine; tests that
-need ``db.backend`` call :meth:`ContractDB.require_backend`, which skips there.
 """
 
 from __future__ import annotations
@@ -22,8 +19,8 @@ from sqlalchemy import insert, text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from reflex_agentlens.core.ids import new_ulid
-from reflex_agentlens.store import migrate
 from reflex_agentlens.store import schema as s
+from reflex_agentlens.store.postgres.backend import PostgresBackend
 from reflex_agentlens.store.protocol import StorageBackend
 from reflex_agentlens.store.sqlite.backend import SqliteBackend
 from tests.contract.dataset import BASE_NS, NS
@@ -108,12 +105,13 @@ async def db(
     admin = create_async_engine(pg_url)
     async with admin.begin() as conn:
         await conn.execute(text(f"CREATE SCHEMA {schema}"))
-    engine = create_async_engine(pg_url, connect_args={"server_settings": {"search_path": schema}})
+    pg = PostgresBackend(pg_url, search_path=schema, clock=clock, pool_size=5)
     try:
-        await migrate.migrate(engine)
-        yield ContractDB("pg", engine, None, clock)
+        await pg.open()
+        await pg.migrate()
+        yield ContractDB("pg", pg.engine, pg, clock)
     finally:
-        await engine.dispose()
+        await pg.close()
         async with admin.begin() as conn:
             await conn.execute(text(f"DROP SCHEMA {schema} CASCADE"))
         await admin.dispose()
