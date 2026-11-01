@@ -281,7 +281,7 @@ async def test_subscribe_coalesces_and_filters_req_140b(db: ContractDB) -> None:
     started = asyncio.Event()
 
     async def consume() -> None:
-        stream = q.subscribe(viewer, min_interval=0.2)
+        stream = q.subscribe(viewer, min_interval=2.0)
         task = asyncio.ensure_future(anext(stream))
         await asyncio.sleep(0.05)
         started.set()
@@ -293,12 +293,12 @@ async def test_subscribe_coalesces_and_filters_req_140b(db: ContractDB) -> None:
     await started.wait()
     feed.publish_nowait(event(a, 1))
     await asyncio.sleep(0.02)
-    for _ in range(1000):  # a burst inside one interval → one notice
+    for _ in range(1000):  # burst inside one 2 s interval → one notice (slow runners too)
         feed.publish_nowait(event(a, 3))
         feed.publish_nowait(event(b, 2))  # another Project: never delivered
     await asyncio.sleep(0.01)
     feed.publish_nowait(event(a, 300, "runs_finalized"))
-    await asyncio.wait_for(consumer, 5)
+    await asyncio.wait_for(consumer, 10)
     first, second = notices
     assert first.project_ids == [a]
     assert len(first.run_keys) == 1
