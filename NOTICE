@@ -1,0 +1,11 @@
+reflex-agentlens
+Copyright (c) 2026 Ernesto Crespo
+
+This product bundles third-party data:
+
+- src/reflex_agentlens/data/pricing.csv
+  Derived from LiteLLM's model_prices_and_context_window.json
+  (https://github.com/BerriAI/litellm), MIT License, Copyright (c) 2023 Berri AI.
+  The snapshot commit and date are recorded in the file's `source` and `snapshot_date`
+  columns. The file is regenerated with scripts/update_pricing.py, which re-checks the
+  license at every snapshot (Tech Design DD-016).
