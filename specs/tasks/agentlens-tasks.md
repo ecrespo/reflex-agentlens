@@ -1005,7 +1005,7 @@ from `develop`.
 - **Depends on**: P4-02.1
 - **Done**: values equal the store aggregates on both backends; one failing aggregate leaves the
   others filled; `includes_unpriced` set wherever an unpriced call contributes.
-- [ ]
+- [x] 2026-10-31 · PR #29
 
 ### P4-04.1 · `query.graph`
 - **What**: `query/graph.py`: `AgentGraph` from the trace spans (graph nodes; nearest graph
@@ -1016,7 +1016,7 @@ from `develop`.
 - **Depends on**: P4-02.2
 - **Done**: fixtures for LangGraph retries, nested agents, approvals inside a node, > 150
   executions and a Run without graph nodes.
-- [ ]
+- [x] 2026-10-31 · PR #29
 
 ### P4-05.1 · `AdminService`: Projects, API keys, saved filters
 - **What**: `query/admin.py` `AdminService(store, cfg, feed?)`: admin gating; `create_project`
@@ -1248,6 +1248,7 @@ the matrix). No requirement is deferred at this point.
 | 2026-10-31 | P3-12.1, 12.2, 13.1, 13.2 | Done | PR #25; `tests/property/` (OTLP → normalize → `write_group` invariance under permutation, splits, grouping and duplicates, both backends), `tests/golden/` (8 OTLP/JSON scenarios, `AGENTLENS_REGEN_GOLDEN=1`, `MAPPING_VERSION` guard), `tests/integration/` (test-only Granian app with the engine in its lifespan, real HTTP/gRPC ports, PG outage through a cuttable TCP proxy with recovery < 10 s, A-04 Project deleted mid-ingest: 400 on SQLite / 401 on PG after NOTIFY, SIGKILL after ack, revocation ≤ 5 s across two processes, two collectors). Fix: a full queue answers 503 `overloaded` with `overload_retry_after`. Golden review: on a span with both dialects the response model falls back to `llm.model_name` (per-field precedence, Tech Design §5.3). **P3 gate**: 1196 passed (CI hypothesis profile, both backends), ingest + store coverage 96 %, mypy --strict clean, 6 import contracts kept |
 | 2026-10-31 | P4-01.1, 01.2, 01.3 | Done | PR #27; `query/dto.py` (API v1.4 §6.7), `query/convert.py`, `query/kinds.py` (§6.8), `query/timeexpr.py`, `query/filters.py` (Runs URL grammar, round-trip property), `query/scope.py` (viewer scope; an unknown Project looks forbidden to an allowed-list viewer), `query/cursor.py` (signed, sort-bound). URL values are kept verbatim (no trimming) so the round trip is exact; unknown URL parameters are ignored |
 | 2026-10-31 | P4-02.1, 02.2, 02.3 | Done | PR #28; `query/service.py` `QueryService(store, cursor_key, clock_ns)`: runs, traces (paged DFS tree, totals, LLM-call table), LLM messages, span drawer (`get_span_detail`: messages, tool I/O, `ErrorInfo`, raw), sessions, facets, selectors, `get_project`; `query/tree.py` iterative and cycle-safe (a parent cycle is broken at its earliest span, flagged `missing_parent`). `core.semconv` gained `EXCEPTION_STACKTRACE`. `get_trace` → `graph=None` until P4-04.1 |
+| 2026-10-31 | P4-03.1, 04.1 | Done | PR #29; `QueryService.dashboard` (nine aggregates via `asyncio.gather`, failing panels listed in `failed`, all failing → `StorageUnavailable`), `storage_status` (full-scope viewers only), `query/graph.py` (retries merged, approvals mark `interrupted`, collapse by node path above 150, LLM/tool fallback), `get_graph(full=)`. API v1.4.1 records these three details |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).

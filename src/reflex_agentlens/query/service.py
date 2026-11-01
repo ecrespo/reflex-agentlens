@@ -7,14 +7,18 @@ touching storage (REQ-191.c). Storage types never leave this module: results are
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
+from typing import Any
 
-from reflex_agentlens.core.errors import NotFound, ValidationError
+from reflex_agentlens.core.errors import Forbidden, NotFound, StorageUnavailable, ValidationError
 from reflex_agentlens.core.ids import span_id_from_hex, trace_id_from_hex
 from reflex_agentlens.query import convert, dto
 from reflex_agentlens.query.cursor import CursorCodec
 from reflex_agentlens.query.filters import RunFilter
+from reflex_agentlens.query.graph import build_graph
 from reflex_agentlens.query.scope import (
     check_project,
     parse_source_label,
@@ -30,6 +34,10 @@ __all__ = ["MAX_TRACE_PAGE", "QueryService"]
 
 MAX_TRACE_PAGE = 2000
 MAX_FACETS = 1000
+TOP_TOOLS = 10
+_BUCKETS = {"auto": None, "minute": r.MINUTE_NS, "hour": r.HOUR_NS, "day": r.DAY_NS}
+
+log = logging.getLogger(__name__)
 
 
 class QueryService:
@@ -42,10 +50,12 @@ class QueryService:
         cursor_key: bytes,
         *,
         clock_ns: Callable[[], int] = time.time_ns,
+        size_limit_bytes: int | None = None,
     ) -> None:
         self.store = store
         self.cursors = CursorCodec(cursor_key)
         self.clock_ns = clock_ns
+        self.size_limit_bytes = size_limit_bytes  # [retention] storage_size_limit (REQ-173.a)
 
     # ── helpers ──────────────────────────────────────────────────────────────────────────────
 
@@ -119,9 +129,18 @@ class QueryService:
             llm_calls=tree.llm_calls,
         )
 
-    def _graph(self, detail: r.TraceDetail) -> dto.AgentGraph | None:
-        """The agent graph (P4-04.1); ``None`` until it is wired."""
-        return None
+    def _graph(self, detail: r.TraceDetail, *, full: bool = False) -> dto.AgentGraph | None:
+        """REQ-153: the executed agent graph of a GenAI Run (``None`` otherwise)."""
+        return build_graph(detail.spans, full=full) if detail.run.is_genai else None
+
+    async def get_graph(
+        self, viewer: dto.Viewer, run: dto.RunRef, *, full: bool = False
+    ) -> dto.AgentGraph | None:
+        """REQ-153.d: the graph again, uncollapsed when ``full`` (the "full view" action)."""
+        detail = await self.store.get_trace(self._key(viewer, run))
+        if detail is None:
+            raise NotFound("trace")
+        return self._graph(detail, full=full)
 
     async def list_llm_calls(self, viewer: dto.Viewer, run: dto.RunRef) -> list[dto.LLMCallView]:
         """REQ-104: every LLM call with normalized messages, in start order."""
@@ -249,3 +268,72 @@ class QueryService:
             if p.id == project_id:
                 return convert.project(p)
         raise NotFound("project")
+
+    # ── dashboard and storage ────────────────────────────────────────────────────────────────
+
+    async def dashboard(self, viewer: dto.Viewer, scope: dto.AggScope) -> dto.DashboardData:
+        """REQ-106, REQ-107: every aggregate, fetched concurrently. A failing aggregate is
+        listed in ``failed`` and the others are still returned (REQ-130.d)."""
+        projects = await resolve_projects(self.store, viewer, scope.project_ids)
+        tr = time_range(scope.time_from, scope.time_to, self.clock_ns(), required=True)
+        assert tr is not None  # noqa: S101 - required=True always returns a range
+        q = r.AggQuery(
+            project_ids=projects,
+            time_range=tr,
+            sources=await self._sources(projects, scope.sources),
+            bucket_ns=_BUCKETS[scope.bucket],
+        )
+        base: dict[str, Any] = {
+            "project_ids": sorted(projects),
+            "time_from_ns": tr.start_ns,
+            "time_to_ns": tr.end_ns,
+            "bucket_ns": q.bucket,
+        }
+        if not projects:
+            return dto.DashboardData(**base)
+        s = self.store
+        panels: dict[str, Awaitable[Any]] = {
+            "kpis": _then(s.agg_kpis(q), convert.kpis),
+            "runs_over_time": _then(s.agg_runs_over_time(q), convert.time_series),
+            "model_usage": _then(s.agg_tokens_cost_by_model(q), convert.model_usage),
+            "latency_by_operation": _then(
+                s.agg_latency_percentiles(q, "operation"), convert.latency_rows
+            ),
+            "latency_by_node": _then(s.agg_latency_percentiles(q, "node"), convert.latency_rows),
+            "tools": _then(s.agg_tool_stats(q, TOP_TOOLS), convert.tool_stats),
+            "by_source": _then(s.agg_by_source(q), convert.source_usage),
+            "approvals": _then(s.agg_approvals(q), convert.approval_stats),
+            "metric_tokens": _then(s.agg_metric_token_usage(q), convert.time_series),
+        }
+        results = await asyncio.gather(*panels.values(), return_exceptions=True)
+        failed: list[str] = []
+        for name, value in zip(panels, results, strict=True):
+            if isinstance(value, BaseException):
+                if not isinstance(value, Exception):
+                    raise value
+                log.warning("dashboard aggregate %s failed: %s", name, type(value).__name__)
+                failed.append(name)
+            else:
+                base[name] = value
+        if len(failed) == len(panels):
+            raise StorageUnavailable("dashboard aggregates failed")
+        return dto.DashboardData(**base, failed=failed)
+
+    async def storage_status(self, viewer: dto.Viewer) -> dto.StorageStatus:
+        """REQ-173: instance-wide usage, size limit and last purge. Instance-wide numbers are
+        shown only to viewers who see every Project."""
+        if viewer.allowed_project_ids is not None:
+            raise Forbidden("instance-wide storage status")
+        usage = await self.store.storage_usage()
+        return dto.StorageStatus(
+            estimated_bytes=usage.estimated_bytes,
+            physical_bytes=usage.physical_bytes,
+            size_limit_bytes=self.size_limit_bytes,
+            runs=usage.runs,
+            spans=usage.spans,
+            last_purge=convert.purge_view(await self.store.last_purge()),
+        )
+
+
+async def _then(result: Awaitable[Any], fn: Callable[[Any], Any]) -> Any:
+    return fn(await result)
