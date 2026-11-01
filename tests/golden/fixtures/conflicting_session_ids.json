@@ -1,0 +1,113 @@
+{
+ "description": "Spans of one trace carry different conversation IDs: the root's wins (REQ-036.c).",
+ "requests": [
+  {
+   "resourceSpans": [
+    {
+     "resource": {
+      "attributes": [
+       {
+        "key": "service.name",
+        "value": {
+         "stringValue": "svc"
+        }
+       }
+      ]
+     },
+     "scopeSpans": [
+      {
+       "scope": {
+        "name": "test.scope"
+       },
+       "spans": [
+        {
+         "traceId": "00000000000000000000000000000004",
+         "spanId": "000000000000002a",
+         "parentSpanId": "0000000000000029",
+         "name": "chat",
+         "startTimeUnixNano": "1792999960000000000",
+         "endTimeUnixNano": "1792999965000000000",
+         "attributes": [
+          {
+           "key": "gen_ai.operation.name",
+           "value": {
+            "stringValue": "chat"
+           }
+          },
+          {
+           "key": "gen_ai.request.model",
+           "value": {
+            "stringValue": "gpt-4o"
+           }
+          },
+          {
+           "key": "gen_ai.conversation.id",
+           "value": {
+            "stringValue": "child-conv"
+           }
+          }
+         ]
+        },
+        {
+         "traceId": "00000000000000000000000000000004",
+         "spanId": "0000000000000029",
+         "name": "invoke_agent support",
+         "startTimeUnixNano": "1792999955000000000",
+         "endTimeUnixNano": "1792999970000000000",
+         "attributes": [
+          {
+           "key": "gen_ai.operation.name",
+           "value": {
+            "stringValue": "invoke_agent"
+           }
+          },
+          {
+           "key": "gen_ai.agent.name",
+           "value": {
+            "stringValue": "support"
+           }
+          },
+          {
+           "key": "gen_ai.conversation.id",
+           "value": {
+            "stringValue": "root-conv"
+           }
+          }
+         ]
+        },
+        {
+         "traceId": "00000000000000000000000000000004",
+         "spanId": "000000000000002b",
+         "parentSpanId": "0000000000000029",
+         "name": "chat",
+         "startTimeUnixNano": "1792999966000000000",
+         "endTimeUnixNano": "1792999969000000000",
+         "attributes": [
+          {
+           "key": "gen_ai.operation.name",
+           "value": {
+            "stringValue": "chat"
+           }
+          },
+          {
+           "key": "gen_ai.request.model",
+           "value": {
+            "stringValue": "gpt-4o"
+           }
+          },
+          {
+           "key": "session.id",
+           "value": {
+            "stringValue": "oi-session"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,152 @@
+{
+ "mapping_version": 1,
+ "views": {
+  "approvals": [],
+  "graph_nodes": [
+   {
+    "agent_name": null,
+    "end_ns": 1792999970000000000,
+    "explicit_parent_key": null,
+    "node_key": "agent",
+    "node_kind": "node",
+    "node_name": "agent",
+    "span_id": "0000000000000048",
+    "start_ns": 1792999961000000000,
+    "status": "ok",
+    "step": 1
+   },
+   {
+    "agent_name": null,
+    "end_ns": 1792999980000000000,
+    "explicit_parent_key": null,
+    "node_key": "tools",
+    "node_kind": "node",
+    "node_name": "tools",
+    "span_id": "000000000000004a",
+    "start_ns": 1792999971000000000,
+    "status": "ok",
+    "step": 2
+   }
+  ],
+  "llm_calls": [
+   {
+    "cache_write_tokens": null,
+    "cached_input_tokens": null,
+    "content_dropped": false,
+    "cost_nusd": 320000,
+    "duration_ns": 7000000000,
+    "error_type": null,
+    "finish_reasons": [],
+    "input_tokens": 80,
+    "model": "gpt-4o-mini",
+    "operation": "chat",
+    "output_tokens": 12,
+    "params": {},
+    "pricing_version": 1,
+    "provider": "openai",
+    "reasoning_tokens": null,
+    "request_model": "gpt-4o-mini",
+    "response_model": "gpt-4o-mini",
+    "span_id": "0000000000000049",
+    "start_ns": 1792999962000000000,
+    "status": "ok",
+    "unpriced": false
+   }
+  ],
+  "rejected_spans": 0,
+  "runs": [
+   {
+    "agent_name": null,
+    "bytes_est": 896,
+    "cache_write_tokens": 0,
+    "cached_input_tokens": 0,
+    "cost_nusd": 320000,
+    "duration_ns": 30000000000,
+    "end_ns": 1792999990000000000,
+    "error_spans": 0,
+    "input_tokens": 80,
+    "is_genai": true,
+    "last_span_ns": 1792999990000000000,
+    "llm_calls": 1,
+    "missing_parents": 0,
+    "models": [
+     "gpt-4o-mini"
+    ],
+    "output_tokens": 12,
+    "reasoning_tokens": 0,
+    "root_name": "LangGraph",
+    "root_span_id": "0000000000000047",
+    "session_ext": "lg-thread-9",
+    "source_count": 1,
+    "source_name": "svc",
+    "source_ns": "",
+    "span_count": 5,
+    "start_ns": 1792999960000000000,
+    "status": "ok",
+    "tool_calls": 1,
+    "trace_id": "00000000000000000000000000000007",
+    "unpriced_calls": 0,
+    "usage_source": "llm"
+   }
+  ],
+  "session_ids": [
+   "lg-thread-9"
+  ],
+  "sessions": [
+   {
+    "cached_input_tokens": 0,
+    "cost_nusd": 320000,
+    "external_id": "lg-thread-9",
+    "first_ns": 1792999960000000000,
+    "includes_unpriced": false,
+    "input_tokens": 80,
+    "last_ns": 1792999990000000000,
+    "output_tokens": 12,
+    "run_count": 1
+   }
+  ],
+  "sources": [
+   [
+    "",
+    "svc",
+    1792999960000000000,
+    1792999990000000000
+   ]
+  ],
+  "spans": [
+   [
+    "0000000000000047",
+    "LangGraph"
+   ],
+   [
+    "0000000000000048",
+    "agent"
+   ],
+   [
+    "0000000000000049",
+    "ChatOpenAI"
+   ],
+   [
+    "000000000000004a",
+    "tools"
+   ],
+   [
+    "000000000000004b",
+    "lookup"
+   ]
+  ],
+  "tool_calls": [
+   {
+    "content_dropped": false,
+    "duration_ns": 7000000000,
+    "error_type": null,
+    "span_id": "000000000000004b",
+    "start_ns": 1792999972000000000,
+    "status": "ok",
+    "tool_call_id": null,
+    "tool_name": "lookup",
+    "tool_type": null
+   }
+  ]
+ }
+}

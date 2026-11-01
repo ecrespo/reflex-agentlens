@@ -1,0 +1,145 @@
+{
+ "mapping_version": 1,
+ "views": {
+  "approvals": [],
+  "graph_nodes": [
+   {
+    "agent_name": "support",
+    "end_ns": 1792999970000000000,
+    "explicit_parent_key": null,
+    "node_key": "support",
+    "node_kind": "agent",
+    "node_name": "support",
+    "span_id": "0000000000000029",
+    "start_ns": 1792999955000000000,
+    "status": "ok",
+    "step": null
+   }
+  ],
+  "llm_calls": [
+   {
+    "cache_write_tokens": null,
+    "cached_input_tokens": null,
+    "content_dropped": false,
+    "cost_nusd": null,
+    "duration_ns": 5000000000,
+    "error_type": null,
+    "finish_reasons": [],
+    "input_tokens": null,
+    "model": "gpt-4o",
+    "operation": "chat",
+    "output_tokens": null,
+    "params": {},
+    "pricing_version": null,
+    "provider": null,
+    "reasoning_tokens": null,
+    "request_model": "gpt-4o",
+    "response_model": null,
+    "span_id": "000000000000002a",
+    "start_ns": 1792999960000000000,
+    "status": "ok",
+    "unpriced": true
+   },
+   {
+    "cache_write_tokens": null,
+    "cached_input_tokens": null,
+    "content_dropped": false,
+    "cost_nusd": null,
+    "duration_ns": 3000000000,
+    "error_type": null,
+    "finish_reasons": [],
+    "input_tokens": null,
+    "model": "gpt-4o",
+    "operation": "chat",
+    "output_tokens": null,
+    "params": {},
+    "pricing_version": null,
+    "provider": null,
+    "reasoning_tokens": null,
+    "request_model": "gpt-4o",
+    "response_model": null,
+    "span_id": "000000000000002b",
+    "start_ns": 1792999966000000000,
+    "status": "ok",
+    "unpriced": true
+   }
+  ],
+  "rejected_spans": 0,
+  "runs": [
+   {
+    "agent_name": "support",
+    "bytes_est": 561,
+    "cache_write_tokens": 0,
+    "cached_input_tokens": 0,
+    "cost_nusd": null,
+    "duration_ns": 15000000000,
+    "end_ns": 1792999970000000000,
+    "error_spans": 0,
+    "input_tokens": 0,
+    "is_genai": true,
+    "last_span_ns": 1792999970000000000,
+    "llm_calls": 2,
+    "missing_parents": 0,
+    "models": [
+     "gpt-4o"
+    ],
+    "output_tokens": 0,
+    "reasoning_tokens": 0,
+    "root_name": "invoke_agent support",
+    "root_span_id": "0000000000000029",
+    "session_ext": "root-conv",
+    "source_count": 1,
+    "source_name": "svc",
+    "source_ns": "",
+    "span_count": 3,
+    "start_ns": 1792999955000000000,
+    "status": "ok",
+    "tool_calls": 0,
+    "trace_id": "00000000000000000000000000000004",
+    "unpriced_calls": 2,
+    "usage_source": "llm"
+   }
+  ],
+  "session_ids": [
+   "child-conv",
+   "oi-session",
+   "root-conv"
+  ],
+  "sessions": [
+   {
+    "cached_input_tokens": 0,
+    "cost_nusd": 0,
+    "external_id": "root-conv",
+    "first_ns": 1792999955000000000,
+    "includes_unpriced": true,
+    "input_tokens": 0,
+    "last_ns": 1792999970000000000,
+    "output_tokens": 0,
+    "run_count": 1
+   }
+  ],
+  "sources": [
+   [
+    "",
+    "svc",
+    1792999955000000000,
+    1792999970000000000
+   ]
+  ],
+  "spans": [
+   [
+    "0000000000000029",
+    "invoke_agent support"
+   ],
+   [
+    "000000000000002a",
+    "chat"
+   ],
+   [
+    "000000000000002b",
+    "chat"
+   ]
+  ],
+  "tool_calls": []
+ }
+}

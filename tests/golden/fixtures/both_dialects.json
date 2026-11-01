@@ -1,0 +1,93 @@
+{
+ "description": "One LLM span with both GenAI semconv and OpenInference attributes. Precedence is per field (Tech Design \u00a75.3): tokens and provider come from GenAI, and with no gen_ai.response.model the response model falls back to llm.model_name; nothing is counted twice.",
+ "requests": [
+  {
+   "resourceSpans": [
+    {
+     "resource": {
+      "attributes": [
+       {
+        "key": "service.name",
+        "value": {
+         "stringValue": "svc"
+        }
+       }
+      ]
+     },
+     "scopeSpans": [
+      {
+       "scope": {
+        "name": "test.scope"
+       },
+       "spans": [
+        {
+         "traceId": "00000000000000000000000000000005",
+         "spanId": "0000000000000033",
+         "name": "chat claude",
+         "startTimeUnixNano": "1792999980000000000",
+         "endTimeUnixNano": "1792999990000000000",
+         "attributes": [
+          {
+           "key": "gen_ai.operation.name",
+           "value": {
+            "stringValue": "chat"
+           }
+          },
+          {
+           "key": "gen_ai.provider.name",
+           "value": {
+            "stringValue": "anthropic"
+           }
+          },
+          {
+           "key": "gen_ai.request.model",
+           "value": {
+            "stringValue": "claude-sonnet-4"
+           }
+          },
+          {
+           "key": "gen_ai.usage.input_tokens",
+           "value": {
+            "intValue": "300"
+           }
+          },
+          {
+           "key": "gen_ai.usage.output_tokens",
+           "value": {
+            "intValue": "40"
+           }
+          },
+          {
+           "key": "openinference.span.kind",
+           "value": {
+            "stringValue": "LLM"
+           }
+          },
+          {
+           "key": "llm.model_name",
+           "value": {
+            "stringValue": "claude-sonnet-4-oi"
+           }
+          },
+          {
+           "key": "llm.token_count.prompt",
+           "value": {
+            "intValue": "999"
+           }
+          },
+          {
+           "key": "llm.token_count.completion",
+           "value": {
+            "intValue": "999"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

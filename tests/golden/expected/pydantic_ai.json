@@ -1,0 +1,152 @@
+{
+ "mapping_version": 1,
+ "views": {
+  "approvals": [
+   {
+    "approval_key": null,
+    "approver": null,
+    "decided_ns": null,
+    "decision": "pending",
+    "kind": "deferral",
+    "node_name": null,
+    "requested_ns": 1792999949000000000,
+    "span_id": "0000000000000040",
+    "tool_call_id": "call_2",
+    "tool_name": "book_trip",
+    "wait_ns": null
+   }
+  ],
+  "graph_nodes": [
+   {
+    "agent_name": "weather_agent",
+    "end_ns": 1792999970000000000,
+    "explicit_parent_key": null,
+    "node_key": "weather_agent",
+    "node_kind": "agent",
+    "node_name": "weather_agent",
+    "span_id": "000000000000003d",
+    "start_ns": 1792999940000000000,
+    "status": "ok",
+    "step": null
+   }
+  ],
+  "llm_calls": [
+   {
+    "cache_write_tokens": null,
+    "cached_input_tokens": null,
+    "content_dropped": false,
+    "cost_nusd": 800000,
+    "duration_ns": 4000000000,
+    "error_type": null,
+    "finish_reasons": [
+     "tool_call"
+    ],
+    "input_tokens": 200,
+    "model": "gpt-4o-2024-08-06",
+    "operation": "chat",
+    "output_tokens": 30,
+    "params": {},
+    "pricing_version": 1,
+    "provider": "openai",
+    "reasoning_tokens": null,
+    "request_model": "gpt-4o",
+    "response_model": "gpt-4o-2024-08-06",
+    "span_id": "000000000000003e",
+    "start_ns": 1792999941000000000,
+    "status": "ok",
+    "unpriced": false
+   }
+  ],
+  "rejected_spans": 0,
+  "runs": [
+   {
+    "agent_name": "weather_agent",
+    "bytes_est": 1030,
+    "cache_write_tokens": 0,
+    "cached_input_tokens": 0,
+    "cost_nusd": 800000,
+    "duration_ns": 30000000000,
+    "end_ns": 1792999970000000000,
+    "error_spans": 0,
+    "input_tokens": 200,
+    "is_genai": true,
+    "last_span_ns": 1792999970000000000,
+    "llm_calls": 1,
+    "missing_parents": 0,
+    "models": [
+     "gpt-4o-2024-08-06"
+    ],
+    "output_tokens": 30,
+    "reasoning_tokens": 0,
+    "root_name": "invoke_agent weather_agent",
+    "root_span_id": "000000000000003d",
+    "session_ext": "pai-1",
+    "source_count": 1,
+    "source_name": "weather",
+    "source_ns": "demo",
+    "span_count": 4,
+    "start_ns": 1792999940000000000,
+    "status": "ok",
+    "tool_calls": 1,
+    "trace_id": "00000000000000000000000000000006",
+    "unpriced_calls": 0,
+    "usage_source": "llm"
+   }
+  ],
+  "session_ids": [
+   "pai-1"
+  ],
+  "sessions": [
+   {
+    "cached_input_tokens": 0,
+    "cost_nusd": 800000,
+    "external_id": "pai-1",
+    "first_ns": 1792999940000000000,
+    "includes_unpriced": false,
+    "input_tokens": 200,
+    "last_ns": 1792999970000000000,
+    "output_tokens": 30,
+    "run_count": 1
+   }
+  ],
+  "sources": [
+   [
+    "demo",
+    "weather",
+    1792999940000000000,
+    1792999970000000000
+   ]
+  ],
+  "spans": [
+   [
+    "000000000000003d",
+    "invoke_agent weather_agent"
+   ],
+   [
+    "000000000000003e",
+    "chat gpt-4o"
+   ],
+   [
+    "000000000000003f",
+    "execute_tool get_weather"
+   ],
+   [
+    "0000000000000040",
+    "running tool: book_trip"
+   ]
+  ],
+  "tool_calls": [
+   {
+    "content_dropped": false,
+    "duration_ns": 2000000000,
+    "error_type": null,
+    "span_id": "000000000000003f",
+    "start_ns": 1792999946000000000,
+    "status": "ok",
+    "tool_call_id": "call_1",
+    "tool_name": "get_weather",
+    "tool_type": null
+   }
+  ]
+ }
+}
