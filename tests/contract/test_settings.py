@@ -53,6 +53,19 @@ async def test_pricing_versions_are_immutable_and_resolved_by_time(db: ContractD
     assert metas[0] == v1.meta
 
 
+async def test_get_pricing_version_by_number(db: ContractDB) -> None:
+    """REQ-171.a: any saved version is readable by number, whatever its effective time."""
+    backend = db.require_backend()
+    with pytest.raises(NotFound):
+        await backend.get_pricing_version(1)
+    v1 = await backend.save_pricing([GPT], "ana", effective_from_ns=0)
+    v2 = await backend.save_pricing([CLAUDE], "ana", effective_from_ns=NOW_NS + 10**12)
+    assert await backend.get_pricing_version(1) == v1
+    assert await backend.get_pricing_version(2) == v2  # not yet in effect, still readable
+    with pytest.raises(NotFound):
+        await backend.get_pricing_version(3)
+
+
 @pytest.mark.parametrize(
     "entries",
     [

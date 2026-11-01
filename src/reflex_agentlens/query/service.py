@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
 from typing import Any
 
 from reflex_agentlens.core.errors import Forbidden, NotFound, StorageUnavailable, ValidationError
@@ -35,6 +35,7 @@ __all__ = ["MAX_TRACE_PAGE", "QueryService"]
 MAX_TRACE_PAGE = 2000
 MAX_FACETS = 1000
 TOP_TOOLS = 10
+MAX_NOTICE_KEYS = 200
 _BUCKETS = {"auto": None, "minute": r.MINUTE_NS, "hour": r.HOUR_NS, "day": r.DAY_NS}
 
 log = logging.getLogger(__name__)
@@ -332,6 +333,75 @@ class QueryService:
             runs=usage.runs,
             spans=usage.spans,
             last_purge=convert.purge_view(await self.store.last_purge()),
+        )
+
+    # ── live updates (REQ-140, API §6.4) ─────────────────────────────────────────────────────
+
+    async def subscribe(
+        self,
+        viewer: dto.Viewer,
+        project_ids: Sequence[str] = (),
+        min_interval: float = 1.0,
+    ) -> AsyncGenerator[dto.ChangeNotice, None]:
+        """Coalesced change notices for the viewer's Projects: at most one per
+        ``min_interval`` seconds, the union of the events in between (REQ-140.b). Events of
+        other Projects never reach the subscriber. A notice is ``truncated`` when run keys were
+        cut (> 200) or events were lost to a full queue: the page then refreshes everything."""
+        if not 0 < min_interval <= 60:
+            raise ValidationError("min_interval", "must be in (0, 60] seconds")
+        scope = await resolve_projects(self.store, viewer, project_ids)
+        everything = viewer.allowed_project_ids is None and not project_ids
+        loop = asyncio.get_running_loop()
+        last = -float("inf")
+        async with self.store.changes.subscribe(None if everything else scope) as sub:
+            dropped = sub.dropped
+            while True:
+                try:
+                    event = await anext(sub)
+                except StopAsyncIteration:
+                    return
+                pending = _Pending()
+                pending.add(event)
+                deadline = last + min_interval
+                while (remaining := deadline - loop.time()) > 0:
+                    try:
+                        pending.add(await asyncio.wait_for(anext(sub), remaining))
+                    except TimeoutError:
+                        break
+                    except StopAsyncIteration:
+                        yield pending.notice()
+                        return
+                if sub.dropped != dropped:
+                    dropped, pending.truncated = sub.dropped, True
+                last = loop.time()
+                yield pending.notice()
+
+
+class _Pending:
+    """Events gathered between two notices (REQ-140.b)."""
+
+    def __init__(self) -> None:
+        self.projects: set[str] = set()
+        self.keys: dict[tuple[str, bytes], None] = {}
+        self.kinds: set[str] = set()
+        self.truncated = False
+
+    def add(self, event: r.ChangeEvent) -> None:
+        self.projects.add(event.project_id)
+        self.kinds.add(event.kind)
+        self.truncated = self.truncated or event.truncated
+        for key in event.run_keys:
+            self.keys[(key.project_id, key.trace_id)] = None
+
+    def notice(self) -> dto.ChangeNotice:
+        keys = list(self.keys)
+        return dto.ChangeNotice(
+            project_ids=sorted(self.projects),
+            run_keys=[
+                dto.RunRef(project_id=p, trace_id=t.hex()) for p, t in keys[:MAX_NOTICE_KEYS]
+            ],
+            truncated=self.truncated or len(keys) > MAX_NOTICE_KEYS,
+            kinds=sorted(self.kinds),  # type: ignore[arg-type]
         )
 
 

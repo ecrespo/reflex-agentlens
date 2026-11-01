@@ -220,6 +220,9 @@ class BackendMethods(ReadMethods):
         at = self._clock() if at_ns is None else at_ns
         return await self._on_read_pool(settings.get_pricing, at)
 
+    async def get_pricing_version(self, version: int) -> PricingVersion:
+        return await self._on_read_pool(settings.get_pricing_version, version)
+
     async def list_unpriced_models(self, scope: ProjectScope) -> list[UnpricedModel]:
         return await self._on_read_pool(settings.list_unpriced_models, scope)
 

@@ -418,6 +418,7 @@ contract-tested in exactly one task:
 | P2-07.1 | `list_runs`, `find_runs_by_trace_id`, `get_trace`, `get_span_raw`, `list_llm_calls`, `list_sources`, `distinct_values` |
 | P2-07.2 | `list_sessions`, `get_session` |
 | P2-07.3 | `agg_kpis`, `agg_runs_over_time`, `agg_tokens_cost_by_model`, `agg_latency_percentiles`, `agg_tool_stats`, `agg_by_source`, `agg_approvals` |
+| P4-05.2 | `get_pricing_version` |
 | P2-09.1 | `purge_by_age`, `purge_by_size`, `storage_usage`, `last_purge`, `job_lock` |
 | P2-10.1 | `change_feed` |
 
@@ -1028,7 +1029,7 @@ from `develop`.
 - **Depends on**: P4-01.2
 - **Done**: non-admin → `Forbidden` for every admin method; slug conflicts → `Conflict`; the
   plaintext appears only in `CreatedApiKey`; revocation reaches the auth cache via the change feed.
-- [ ]
+- [x] 2026-11-01 · PR #30
 
 ### P4-05.2 · `AdminService`: pricing, redaction, recompute
 - **What**: `get_pricing`, `list_pricing_versions`, `save_pricing` (non-negative decimals, glob
@@ -1039,7 +1040,7 @@ from `develop`.
 - **Depends on**: P4-05.1
 - **Done**: CSV round-trip; an invalid or catastrophic regex is refused with the rule name;
   preview logs nothing (caplog); recompute updates only the given range.
-- [ ]
+- [x] 2026-11-01 · PR #30
 
 ### P4-06.1 · `subscribe`, demo mode, phase gate
 - **What**: `QueryService.subscribe` (allowed-Project filter, coalescing to ≤ 1 notice per
@@ -1050,7 +1051,7 @@ from `develop`.
 - **Done**: burst of 1,000 events yields ≤ 1 notice per interval with the union of keys; a viewer
   never receives another Project's keys; plan P4 Done: `query` coverage ≥ 85 %, `mypy --strict`
   clean, import contracts kept, contract suite green on both backends.
-- [ ]
+- [x] 2026-11-01 · PR #30
 
 **Suggested batches:** (1) P4-01.1, P4-01.2, P4-01.3 · (2) P4-02.1, P4-02.2, P4-02.3 ·
 (3) P4-03.1, P4-04.1 · (4) P4-05.1, P4-05.2, P4-06.1.
@@ -1249,6 +1250,7 @@ the matrix). No requirement is deferred at this point.
 | 2026-10-31 | P4-01.1, 01.2, 01.3 | Done | PR #27; `query/dto.py` (API v1.4 §6.7), `query/convert.py`, `query/kinds.py` (§6.8), `query/timeexpr.py`, `query/filters.py` (Runs URL grammar, round-trip property), `query/scope.py` (viewer scope; an unknown Project looks forbidden to an allowed-list viewer), `query/cursor.py` (signed, sort-bound). URL values are kept verbatim (no trimming) so the round trip is exact; unknown URL parameters are ignored |
 | 2026-10-31 | P4-02.1, 02.2, 02.3 | Done | PR #28; `query/service.py` `QueryService(store, cursor_key, clock_ns)`: runs, traces (paged DFS tree, totals, LLM-call table), LLM messages, span drawer (`get_span_detail`: messages, tool I/O, `ErrorInfo`, raw), sessions, facets, selectors, `get_project`; `query/tree.py` iterative and cycle-safe (a parent cycle is broken at its earliest span, flagged `missing_parent`). `core.semconv` gained `EXCEPTION_STACKTRACE`. `get_trace` → `graph=None` until P4-04.1 |
 | 2026-10-31 | P4-03.1, 04.1 | Done | PR #29; `QueryService.dashboard` (nine aggregates via `asyncio.gather`, failing panels listed in `failed`, all failing → `StorageUnavailable`), `storage_status` (full-scope viewers only), `query/graph.py` (retries merged, approvals mark `interrupted`, collapse by node path above 150, LLM/tool fallback), `get_graph(full=)`. API v1.4.1 records these three details |
+| 2026-11-01 | P4-05.1, 05.2, 06.1 | Done | PR #30; `query/admin.py` `AdminService` (admin gating, Projects, API keys with plaintext only in `CreatedApiKey`, pricing versions + CSV via `store/pricing_csv.py`, unpriced models, recompute, redaction rules validated at save, preview, saved filters, demo-mode guard); `QueryService.subscribe` coalescing. Store addition `get_pricing_version` (API v1.4.2). Fix: the adversarial redaction sample was 32 KiB, not 64 KiB, and let `(a+)+$` pass the budget intermittently. **P4 gate**: `query` coverage 91-98 % per module (≥ 85 %), `mypy --strict` clean, 6 import contracts kept, 1,382 tests green on SQLite and PostgreSQL |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).

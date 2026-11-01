@@ -620,7 +620,7 @@ class ApiKeyView(_Dto):
 class CreatedApiKey(_Dto):
     key_id: str
     plaintext: SecretStr
-    snippet: str
+    snippet: str = Field(repr=False)  # contains the plaintext: kept out of repr and logs
 
 
 class PricingEntryView(_Dto):
