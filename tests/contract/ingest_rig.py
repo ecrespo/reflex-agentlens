@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import shutil
 import time
 from collections.abc import AsyncIterator
@@ -70,6 +71,7 @@ async def ingest_rig(
     *,
     patch: ProjectPatch | None = None,
     extra_services: list[Service] | None = None,
+    grpc: bool = False,
 ) -> AsyncIterator[IngestRig]:
     path = tmp_path / "agentlens.db"
     shutil.copyfile(sqlite_template, path)
@@ -82,7 +84,12 @@ async def ingest_rig(
         await backend.open()
         return backend
 
-    engine = build_engine(cfg, open_store, extra_services=extra_services)
+    services = list(extra_services or [])
+    if grpc:
+        from reflex_agentlens.ingest.grpc import grpc_service
+
+        services.append(grpc_service(cfg, port=0))  # ephemeral port, read back from the core
+    engine = build_engine(cfg, open_store, extra_services=services)
     await engine.start()
     try:
         key = generate_api_key()
@@ -99,6 +106,12 @@ async def ingest_rig(
             return project.id
 
         project_id = await engine.call(seed)
+        if grpc:
+            for _ in range(500):
+                core = cast(IngestCore, engine.runtime.app) if engine.runtime else None
+                if core is not None and core.grpc_port:
+                    break
+                await asyncio.sleep(0.01)
         yield IngestRig(engine, cfg, project_id, key.plaintext, key.key_id)
     finally:
         await engine.stop()
