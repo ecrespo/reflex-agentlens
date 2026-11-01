@@ -1218,7 +1218,7 @@ from `develop`.
 - **Depends on**: P5-03.4
 - **Done**: subprocess test: requests in flight at SIGTERM are committed and answered 200, new
   ones get 503, the process exits 0 within the grace period.
-- [ ]
+- [x] 2026-11-01 · PR #34
 
 ### P5-06.1 · Rebuild under concurrent ingest
 - **What**: integration test (and fixes it reveals): `rebuild` while an exporter keeps sending;
@@ -1226,7 +1226,7 @@ from `develop`.
 - **REQ / design**: REQ-042.b
 - **Depends on**: P5-03.3
 - **Done**: the test passes on both backends.
-- [ ]
+- [x] 2026-11-01 · PR #34
 
 ### P5-07.1 · Self-telemetry (extra `[selftelemetry]`)
 - **What**: `app/selftelemetry.py`: off by default; when enabled, an OTLP exporter (HTTP or
@@ -1238,7 +1238,7 @@ from `develop`.
 - **Depends on**: P5-03.4
 - **Done**: loop-check table test; with an in-memory exporter, an export produces the expected
   spans/metrics and no attribute value from the payload.
-- [ ]
+- [x] 2026-11-01 · PR #34
 
 ### P5-08.1 · Topology equivalence and phase gate
 - **What**: the golden OTLP suite (P3-13) sent through the `serve` app and through the `collect`
@@ -1248,7 +1248,7 @@ from `develop`.
 - **Done**: equivalence test green; plan P5 Done: every CLI command has an integration test,
   including every non-zero exit code; `collect` on PG and `serve` pass the health, shutdown and
   outage tests; `mypy --strict` clean; import contracts kept.
-- [ ]
+- [x] 2026-11-01 · PR #34
 
 **Suggested batches:** (1) P5-01.1, P5-01.2, P5-02.1, P5-02.2 · (2) P5-03.1, P5-03.2, P5-03.3,
 P5-03.4 · (3) P5-04.1, P5-04.2 · (4) P5-05.1, P5-06.1, P5-07.1, P5-08.1.
@@ -1450,6 +1450,7 @@ the matrix). No requirement is deferred at this point.
 | 2026-11-01 | P5-01.1, 01.2, 02.1, 02.2 | Done | PR #31; Tasks v1.4 (P5 detailed); `app/backend.py` (URL → backend, `collect` refuses SQLite), `app/policy.py` (non-loopback HTTP bind needs `auth.mode`; gRPC carries ingest only), `app/routes.py` (`Health` with a 1 s probe cache), `app/lifespan.py` `runtime()` (startup order of the P5 design notes; the ingest-loop backend shares the serving backend's change feed and origin ID), `app/bootstrap.py` (default Project + key, TTY banner or 0600 file, hashed configured key, session secret file), `app/server.py` `build_app`. An unusable SQLite path is `StorageUnavailable` (exit 5) |
 | 2026-11-01 | P5-03.1, 03.2, 03.3, 03.4 | Done | PR #32; `cli/main.py` (argparse, every API §8.3 command, exit-code mapping, `--print-config`; `collect` port 4318 through the new `load_config(command_defaults=)` layer), store `count_purgeable` (API v1.4.3), `Jobs.purge(trigger=)`, `ingest/rederive.py` (current mapping + pricing in effect now; fresh golden spans re-derive to themselves), `app/server.py` `run_server` on Granian's embedded server (the runner enters the lifespan itself so startup errors keep their exit codes; SIGTERM → health 503, engine drain, HTTP stop) and `probe_ports` (exit 3). Runtime/CLI tests isolate PostgreSQL per database. `demo` exits 2 until P8-02 |
 | 2026-11-01 | P5-04.1, 04.2 | Done | PR #33; `app/auth.py` (`standalone_viewer` for none/password/proxy, signed session cookie), `app/login.py` (login/logout routes in `password` mode, Origin/Referer guard, same-origin `next`, throttle, form parsed in-house with an 8 KiB cap), CORS pinned to one origin in `serve`/`demo` |
+| 2026-11-01 | P5-05.1, 06.1, 07.1, 08.1 | Done | PR #34; graceful shutdown in-process through `run_server`'s stop event (in-flight exports 200, late 503, `/healthz` `shutting_down`; the SIGTERM → exit 0 path stays in the subprocess tests); rebuild racing late spans converges (second rebuild changes 0 Runs, views unchanged) on both backends; `core/telemetry.py` (Tech Design §7.2 metrics/spans with closed label sets, no-op recorder) + `app/selftelemetry.py` (private OTLP providers, loop check → exit 2, missing extra named, span status without exception messages); golden fixtures through `serve` and `collect` (PG) into twin Projects give identical responses and views (REQ-004.c). The OTLP HTTP exporter joins the dev group. **P5 gate**: every CLI command and every API §8.3 exit code (0–5) has an integration test; `collect` on PG and `serve` pass the health, shutdown and outage tests; 1,517 tests green on SQLite and PostgreSQL; `mypy --strict` clean; 6 import contracts kept |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).

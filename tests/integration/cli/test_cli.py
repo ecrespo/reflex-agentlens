@@ -221,3 +221,18 @@ def test_port_in_use_names_port_and_setting_req_200c(fresh: Fresh) -> None:
     assert str(port) in err
     assert "server.http_port" in err
     assert "--port" in err
+
+
+def test_unexpected_failure_exits_1_without_details(
+    fresh: Fresh, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """API §8.3: an unexpected error is exit 1 naming only its type (the trace goes to the log)."""
+
+    def boom(*_: object, **__: object) -> None:
+        raise RuntimeError("secret-detail-4b1d")
+
+    monkeypatch.setattr("reflex_agentlens.cli.main.AdminService.revoke_api_key", boom)
+    code, out, err = run(fresh, "keys", "revoke", "01KEYDOESNOTMATTER00000000")
+    assert code == EXIT["runtime"]
+    assert "runtime error (RuntimeError)" in err
+    assert "secret-detail-4b1d" not in err + out

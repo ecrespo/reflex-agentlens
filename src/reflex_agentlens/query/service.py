@@ -15,6 +15,7 @@ from typing import Any
 
 from reflex_agentlens.core.errors import Forbidden, NotFound, StorageUnavailable, ValidationError
 from reflex_agentlens.core.ids import span_id_from_hex, trace_id_from_hex
+from reflex_agentlens.core.telemetry import recorder, timed
 from reflex_agentlens.query import convert, dto
 from reflex_agentlens.query.cursor import CursorCodec
 from reflex_agentlens.query.filters import RunFilter
@@ -76,6 +77,7 @@ class QueryService:
 
     # ── runs ─────────────────────────────────────────────────────────────────────────────────
 
+    @timed("list_runs")
     async def list_runs(
         self,
         viewer: dto.Viewer,
@@ -98,6 +100,7 @@ class QueryService:
             next_cursor=None if nxt is None else self.cursors.encode_run(sort, nxt),
         )
 
+    @timed("resolve_trace")
     async def resolve_trace(
         self, viewer: dto.Viewer, trace_id: str, project_slug: str | None = None
     ) -> list[dto.RunRef]:
@@ -107,6 +110,7 @@ class QueryService:
         keys = await self.store.find_runs_by_trace_id(scope, raw)
         return [dto.RunRef(project_id=k.project_id, trace_id=raw.hex()) for k in keys]
 
+    @timed("get_trace")
     async def get_trace(
         self, viewer: dto.Viewer, run: dto.RunRef, offset: int = 0, limit: int = MAX_TRACE_PAGE
     ) -> dto.TraceDetail:
@@ -134,6 +138,7 @@ class QueryService:
         """REQ-153: the executed agent graph of a GenAI Run (``None`` otherwise)."""
         return build_graph(detail.spans, full=full) if detail.run.is_genai else None
 
+    @timed("get_graph")
     async def get_graph(
         self, viewer: dto.Viewer, run: dto.RunRef, *, full: bool = False
     ) -> dto.AgentGraph | None:
@@ -143,6 +148,7 @@ class QueryService:
             raise NotFound("trace")
         return self._graph(detail, full=full)
 
+    @timed("list_llm_calls")
     async def list_llm_calls(self, viewer: dto.Viewer, run: dto.RunRef) -> list[dto.LLMCallView]:
         """REQ-104: every LLM call with normalized messages, in start order."""
         calls = await self.store.list_llm_calls(self._key(viewer, run))
@@ -151,6 +157,7 @@ class QueryService:
             for c in calls
         ]
 
+    @timed("get_span_raw")
     async def get_span_raw(self, viewer: dto.Viewer, run: dto.RunRef, span_id: str) -> dto.SpanRaw:
         """REQ-151.e: the stored attributes, resource, events and links of one span."""
         raw = await self.store.get_span_raw(self._key(viewer, run), span_id_from_hex(span_id))
@@ -158,6 +165,7 @@ class QueryService:
             raise NotFound("span")
         return convert.span_raw(raw)
 
+    @timed("get_span_detail")
     async def get_span_detail(
         self, viewer: dto.Viewer, run: dto.RunRef, span_id: str
     ) -> dto.SpanDetail:
@@ -190,6 +198,7 @@ class QueryService:
 
     # ── sessions ─────────────────────────────────────────────────────────────────────────────
 
+    @timed("list_sessions")
     async def list_sessions(
         self,
         viewer: dto.Viewer,
@@ -218,6 +227,7 @@ class QueryService:
             next_cursor=None if nxt is None else self.cursors.encode_session(sort, nxt),
         )
 
+    @timed("get_session")
     async def get_session(self, viewer: dto.Viewer, session_id: str) -> dto.SessionDetail:
         """REQ-105.b: Runs in chronological order with cumulative tokens and cost."""
         scope = await resolve_projects(self.store, viewer)
@@ -228,6 +238,7 @@ class QueryService:
 
     # ── selectors ────────────────────────────────────────────────────────────────────────────
 
+    @timed("facets")
     async def facets(
         self,
         viewer: dto.Viewer,
@@ -245,6 +256,7 @@ class QueryService:
         assert tr is not None  # noqa: S101 - required=True always returns a range
         return await self.store.distinct_values(projects, field, tr, limit)
 
+    @timed("list_projects")
     async def list_projects(self, viewer: dto.Viewer) -> list[dto.ProjectRef]:
         """REQ-130.a: the Project selector, limited to the viewer's Projects."""
         allowed = viewer.allowed_project_ids
@@ -254,6 +266,7 @@ class QueryService:
             if allowed is None or p.id in allowed
         ]
 
+    @timed("list_sources")
     async def list_sources(
         self, viewer: dto.Viewer, project_ids: Sequence[str] = ()
     ) -> list[dto.SourceView]:
@@ -263,6 +276,7 @@ class QueryService:
             return []
         return [convert.source_view(v) for v in await self.store.list_sources(scope)]
 
+    @timed("get_project")
     async def get_project(self, viewer: dto.Viewer, project_id: str) -> dto.Project:
         check_project(viewer, project_id)
         for p in await self.store.list_projects():
@@ -272,6 +286,7 @@ class QueryService:
 
     # ── dashboard and storage ────────────────────────────────────────────────────────────────
 
+    @timed("dashboard")
     async def dashboard(self, viewer: dto.Viewer, scope: dto.AggScope) -> dto.DashboardData:
         """REQ-106, REQ-107: every aggregate, fetched concurrently. A failing aggregate is
         listed in ``failed`` and the others are still returned (REQ-130.d)."""
@@ -320,6 +335,7 @@ class QueryService:
             raise StorageUnavailable("dashboard aggregates failed")
         return dto.DashboardData(**base, failed=failed)
 
+    @timed("storage_status")
     async def storage_status(self, viewer: dto.Viewer) -> dto.StorageStatus:
         """REQ-173: instance-wide usage, size limit and last purge. Instance-wide numbers are
         shown only to viewers who see every Project."""
@@ -360,6 +376,8 @@ class QueryService:
                     event = await anext(sub)
                 except StopAsyncIteration:
                     return
+                lag = (time.time_ns() - event.committed_at_ns) / 1e9
+                recorder().record("agentlens.changefeed.lag", max(lag, 0.0))
                 pending = _Pending()
                 pending.add(event)
                 deadline = last + min_interval

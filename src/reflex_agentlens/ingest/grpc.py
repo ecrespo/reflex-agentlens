@@ -30,6 +30,7 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
 
 from reflex_agentlens.core.config import AgentlensConfig
 from reflex_agentlens.core.errors import StorageUnavailable
+from reflex_agentlens.core.telemetry import outcome, recorder
 from reflex_agentlens.ingest.core import IngestCore
 from reflex_agentlens.ingest.engine import EngineRuntime, Service
 from reflex_agentlens.ingest.errors import IngestFailure
@@ -80,15 +81,24 @@ class _Handler:
         self.core = core
 
     async def guarded(self, context: grpc.aio.ServicerContext[Any, Any], call: Any) -> Any:
+        rec = recorder()
+        attrs = {"protocol": "grpc", "outcome": "accepted"}
         try:
-            return await call()
-        except IngestFailure as exc:
-            await _abort(context, exc.http_status, exc.message, exc.retry_after_s)
-        except StorageUnavailable:
-            await _abort(context, 503, "storage unavailable", _STORAGE_RETRY_S)
-        except Exception:
-            log.exception("gRPC export failed")
-            await _abort(context, 500, "internal error", None)
+            with rec.span("agentlens.ingest.export", attrs):
+                try:
+                    return await call()
+                except IngestFailure as exc:
+                    attrs["outcome"] = outcome(exc.http_status)
+                    await _abort(context, exc.http_status, exc.message, exc.retry_after_s)
+                except StorageUnavailable:
+                    attrs["outcome"] = outcome(503)
+                    await _abort(context, 503, "storage unavailable", _STORAGE_RETRY_S)
+                except Exception:
+                    attrs["outcome"] = outcome(500)
+                    log.exception("gRPC export failed")
+                    await _abort(context, 500, "internal error", None)
+        finally:
+            rec.add("agentlens.ingest.requests", 1, attrs)
 
 
 class TraceServicer(trace_service_pb2_grpc.TraceServiceServicer, _Handler):

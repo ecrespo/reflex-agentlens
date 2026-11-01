@@ -10,6 +10,9 @@ Startup order (Tasks P5 design notes; REQ-074, 060.b, 201, DD-001):
 5. the ingest engine, when this process ingests;
 6. ready. Leaving the context stops the engine (drain, REQ-331) and closes the backend.
 
+Before step 1, opt-in self-telemetry (``app.selftelemetry``) runs its loop check and installs
+its exporter; it is flushed and removed last.
+
 The ingest engine opens its own backend on the ingest loop (asyncpg connections are
 loop-bound). It shares the serving backend's :class:`ChangeFeed` (thread-safe) and origin ID, so
 the UI sees ingest commits in-process and PostgreSQL NOTIFY echoes of this process are skipped;
@@ -24,6 +27,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any, TextIO
 
+from reflex_agentlens.app import selftelemetry
 from reflex_agentlens.app.backend import Backend, Mode, check_mode, make_backend, open_backend
 from reflex_agentlens.app.bootstrap import BootstrapResult, announce, first_run, session_secret
 from reflex_agentlens.app.routes import Health
@@ -90,7 +94,13 @@ async def runtime(
     """Run the startup order above; ``banner`` receives the first-run banner (``serve``)."""
     check_mode(cfg, mode)
     options = backend_options or {}
-    backend = await open_backend(cfg, listen=True, **options)
+    tracing = selftelemetry.start(cfg)  # loop check first: a bad endpoint is exit 2
+    try:
+        backend = await open_backend(cfg, listen=True, **options)
+    except BaseException:
+        if tracing is not None:
+            tracing.shutdown()
+        raise
     try:
         await prepare_schema(backend, cfg)
         await bootstrap_pricing(backend, load_bundled_pricing(cfg.pricing.file))
@@ -133,3 +143,5 @@ async def runtime(
                 await engine.stop()
     finally:
         await backend.close()
+        if tracing is not None:
+            tracing.shutdown()
