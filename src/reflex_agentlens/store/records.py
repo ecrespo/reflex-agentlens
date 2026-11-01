@@ -29,6 +29,8 @@ __all__ = [
     "ApprovalRow",
     "AttrPredicate",
     "AttrScope",
+    "BatchRejectReason",
+    "BatchRejected",
     "ChangeEvent",
     "ChangeKind",
     "FacetField",
@@ -66,6 +68,7 @@ __all__ = [
     "RunSummary",
     "SavedFilter",
     "SchemaStatus",
+    "SecretName",
     "SessionKey",
     "SourceKey",
     "SourceView",
@@ -467,6 +470,20 @@ class WriteResult:
     duplicates: int
     affected_runs: list[RunKey]
     committed_at_ns: int
+
+
+SecretName = Literal["session_key"]
+BatchRejectReason = Literal["project_not_found", "constraint_violation", "invalid_data"]
+
+
+@dataclass(frozen=True, slots=True)
+class BatchRejected:
+    """API v1.3 §5.1: one batch of a ``write_group`` rolled back to its savepoint.
+
+    ``reason`` is a fixed key, never request data.
+    """
+
+    reason: BatchRejectReason
 
 
 @dataclass(frozen=True, slots=True)

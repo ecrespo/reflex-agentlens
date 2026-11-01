@@ -37,6 +37,7 @@ from reflex_agentlens.store.records import (
     AggQuery,
     ApiKeyRecord,
     ApprovalStats,
+    BatchRejected,
     FacetField,
     IngestSettings,
     JobName,
@@ -69,6 +70,7 @@ from reflex_agentlens.store.records import (
     RunSummary,
     SavedFilter,
     SchemaStatus,
+    SecretName,
     SessionCursor,
     SessionDetail,
     SessionQuery,
@@ -120,6 +122,18 @@ class StorageBackend(Protocol):
 
     async def write_batch(self, batch: NormalizedBatch) -> WriteResult:
         """Persist one normalized batch in one transaction (API §5.1)."""
+
+    async def write_group(
+        self, batches: Sequence[NormalizedBatch]
+    ) -> list[WriteResult | BatchRejected]:
+        """Several batches in one transaction, one SAVEPOINT each (API v1.3 §5.1, DD-003).
+
+        A batch hitting a data error is rolled back alone and returned as ``BatchRejected``;
+        any other error fails the call. Events are published only for committed batches.
+        """
+
+    async def get_or_create_secret(self, name: SecretName) -> bytes:
+        """A random secret in ``app_meta``, the same for every process (Data Model §2.1)."""
 
     async def write_metric_points(self, points: Sequence[MetricPoint]) -> int:
         """Insert GenAI metric points idempotently; returns how many were new (REQ-005)."""

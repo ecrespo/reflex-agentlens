@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Any, Literal, TypeVar
 
@@ -41,6 +41,7 @@ from reflex_agentlens.store.changefeed import (
     encode_notify,
 )
 from reflex_agentlens.store.records import (
+    BatchRejected,
     ChangeEvent,
     JobName,
     NormalizedBatch,
@@ -53,6 +54,7 @@ from reflex_agentlens.store.writeapi import BackendMethods
 __all__ = ["DEADLOCK_SQLSTATE", "PostgresBackend", "async_url"]
 
 _R = TypeVar("_R")
+_A = TypeVar("_A")
 _log = logging.getLogger(__name__)
 ListenerState = Literal["stopped", "listening", "polling"]
 Fingerprint = dict[str, tuple[int, ...]]
@@ -178,14 +180,23 @@ class PostgresBackend(BackendMethods):
 
     async def write_batch(self, batch: NormalizedBatch) -> WriteResult:
         """API §5.1 with the DD-004 lock order; one retry on deadlock, then retryable failure."""
+        return await self._retry_conflict(self._write_and_publish, batch)
+
+    async def write_group(
+        self, batches: Sequence[NormalizedBatch]
+    ) -> list[WriteResult | BatchRejected]:
+        """DD-003: one SAVEPOINT per batch; a deadlock retries the whole group once."""
+        return await self._retry_conflict(self._write_group_and_publish, batches)
+
+    async def _retry_conflict(self, fn: Callable[[_A], Awaitable[_R]], arg: _A) -> _R:
         try:
-            return await self._write_and_publish(batch)
+            return await fn(arg)
         except DBAPIError as exc:
             if _sqlstate(exc) not in (DEADLOCK_SQLSTATE, SERIALIZATION_SQLSTATE):
                 raise
             self.deadlock_retries += 1
             try:
-                return await self._write_and_publish(batch)
+                return await fn(arg)
             except DBAPIError as again:
                 if _sqlstate(again) in (DEADLOCK_SQLSTATE, SERIALIZATION_SQLSTATE):
                     raise StorageUnavailable("write conflict; retry the batch") from again

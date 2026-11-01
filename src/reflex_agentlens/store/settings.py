@@ -12,6 +12,7 @@ Data Model §2.4, §2.5, §2.17; REQ-060.a/c, REQ-061.b (resolution data), REQ-1
 from __future__ import annotations
 
 import json
+import secrets
 from collections.abc import Sequence
 from typing import Any
 
@@ -21,6 +22,7 @@ from sqlalchemy.exc import IntegrityError
 from reflex_agentlens.core.errors import Conflict, NotFound, ValidationError
 from reflex_agentlens.store import schema as s
 from reflex_agentlens.store.admin import _bump, _project_pk
+from reflex_agentlens.store.dialect import ops_for
 from reflex_agentlens.store.records import (
     IngestSettings,
     NewSavedFilter,
@@ -38,6 +40,7 @@ from reflex_agentlens.store.schema import DEFAULT_PRESETS
 __all__ = [
     "delete_filter",
     "get_ingest_settings",
+    "get_or_create_secret",
     "get_pricing",
     "list_pricing_versions",
     "list_saved_filters",
@@ -326,3 +329,15 @@ def delete_filter(conn: Connection, project_id: str, filter_id: str) -> None:
     pk = _project_pk(conn, project_id)
     if conn.execute(delete(sf).where(sf.c.id == filter_id, sf.c.project_pk == pk)).rowcount == 0:
         raise NotFound("saved filter")
+
+
+# ── app_meta secrets (Data Model §2.1, Analyze A-08) ─────────────────────────────────────────
+
+
+def get_or_create_secret(conn: Connection, name: str) -> str:
+    """32 random bytes as hex, created once with insert-or-ignore so every process agrees."""
+    t = s.app_meta
+    ops = ops_for(conn.dialect.name)
+    stmt = ops.insert(t).values(key=name, value=secrets.token_hex(32))
+    conn.execute(stmt.on_conflict_do_nothing(index_elements=[t.c.key]))
+    return str(conn.execute(select(t.c.value).where(t.c.key == name)).scalar_one())
