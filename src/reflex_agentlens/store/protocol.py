@@ -22,6 +22,7 @@ Implemented so far:
 - P4-05.2: ``get_pricing_version``
 - P2-08.3: ``finalize_stale_runs``, ``rebuild``, ``recompute_costs``
 - P2-09.1: ``purge_by_age``, ``purge_by_size``, ``storage_usage``, ``last_purge``, ``job_lock``
+- P5-03.2: ``count_purgeable``
 - P2-10.1 / P2-10.2: ``changes`` (the :class:`ChangeFeed`), ``start_change_listener``
 - P2-08.1: ``list_projects``, ``create_project``, ``update_project``, ``delete_project``,
   ``create_api_key``, ``list_api_keys``, ``revoke_api_key``, ``resolve_api_key``, ``touch_api_key``
@@ -303,6 +304,9 @@ class StorageBackend(Protocol):
         self, limit_bytes: int, batch_traces: int, *, trigger: PurgeTrigger = "scheduled"
     ) -> PurgeReport:
         """REQ-091.a: oldest traces across Projects until usage <= 90 % of the limit; logged."""
+
+    async def count_purgeable(self, now_ns: int) -> int:
+        """Traces past their Project's maximum age at ``now_ns``; nothing is deleted."""
 
     async def storage_usage(self) -> StorageUsage:
         """REQ-173.a."""

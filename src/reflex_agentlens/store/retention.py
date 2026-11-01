@@ -101,6 +101,18 @@ def age_batch(conn: Connection, now_ns: int, batch_traces: int) -> PurgeBatch:
     return _delete_runs(conn, pks, now_ns)
 
 
+def count_expired(conn: Connection, now_ns: int) -> int:
+    """Traces a purge by age would delete now (``purge --dry-run``, REQ-092.a)."""
+    cutoff = _cutoff(now_ns, p.c.retention_max_age_s)
+    return int(
+        conn.execute(
+            select(func.count())
+            .select_from(r.join(p, p.c.pk == r.c.project_pk))
+            .where(p.c.retention_max_age_s > 0, r.c.last_span_ns < cutoff)
+        ).scalar_one()
+    )
+
+
 def size_batch(conn: Connection, bytes_to_free: int, batch_traces: int, now_ns: int) -> PurgeBatch:
     """Q13 by size: the globally oldest traces, at most ``batch_traces``, until enough is freed."""
     rows = conn.execute(
