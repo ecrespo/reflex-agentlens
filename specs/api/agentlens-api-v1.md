@@ -6,7 +6,7 @@
 |---|---|
 | **Author** | Ernesto Crespo (`ecrespo`) |
 | **Status** | `APPROVED` |
-| **API version** | v1.4 (ships with package 0.1.0) |
+| **API version** | v1.4.1 (ships with package 0.1.0) |
 | **Date** | 2026-10-30 |
 | **Related PRD** | [`specs/prd/agentlens-v0.1.md`](../prd/agentlens-v0.1.md) v1.1 |
 | **Governed by** | [`specs/constitution.md`](../constitution.md) v1.0 |
@@ -447,7 +447,8 @@ DTOs are frozen Pydantic v2 models (JSON-serializable, Reflex-state friendly). M
 | `list_projects(viewer)` / `list_sources(viewer, project_ids)` | `list[ProjectRef]` / `list[SourceView]`, limited to allowed Projects | 130.a |
 | `get_project(viewer, project_id)` | `Project` (raises `NotFound`) | 173.a |
 | `subscribe(viewer, project_ids, min_interval: float = 1.0)` | `AsyncIterator[ChangeNotice]` (coalesced) | 140 |
-| `storage_status(viewer)` | `StorageStatus` (usage, size limit, last purge) | 173 |
+| `get_graph(viewer, run: RunRef, full: bool = False)` | `AgentGraph \| None`; `full=True` is the uncollapsed view on demand | 153.d |
+| `storage_status(viewer)` | `StorageStatus` (usage, size limit, last purge). Instance-wide, so a viewer with `allowed_project_ids` set gets `Forbidden` | 173 |
 
 **Key DTOs** (summary; field-level definitions are in §6.7, kind mapping in §6.8):
 
@@ -831,7 +832,7 @@ class DashboardData(BaseModel):
     tools: list[ToolStat] | None                    # top 10 by calls (106.d)
     by_source: list[SourceUsage] | None             # 106.e
     approvals: ApprovalStats | None                 # 106.f
-    metric_tokens: TimeSeries | None                # REQ-107; group = token type
+    metric_tokens: TimeSeries | None                # REQ-107; group = "<model>/<token type>"
     failed: list[str]                   # names of the fields above whose query failed (REQ-130.d)
 
 class Kpis(BaseModel):                  # 106.g
@@ -1250,3 +1251,4 @@ When stdout is not a TTY, the key line is replaced by
 | 1.3 | 2026-10-31 | Delta `changes/2026-10-p3-ingest-prep/`: `write_group` + `BatchRejected` with a 400 / `INVALID_ARGUMENT` row (A-04); `get_or_create_secret` (A-08); validation rules `future_timestamp`, `older_than_retention` and `ingest.max_clock_skew` (A-17) |
 | 1.3.1 | 2026-10-31 | Delta `changes/2026-10-saved-filter-scope/`: `delete_filter(project_id, filter_id)` is scoped to its Project (IDOR found by a security review) |
 | 1.4 | 2026-10-31 | Delta `changes/2026-10-p4-query-prep/`: §6.7 DTO reference with every field (A-05; `RunSummary.usage_source`), §6.8 kind mapping (A-10); `get_trace` paging, `get_span_detail`, `get_project`, `list_pricing_versions`, `list_projects_admin`; `RunFilter.sources` holds Source labels; cursor tag carries the sort |
+| 1.4.1 | 2026-10-31 | P4 implementation notes: `get_graph(full=)` for REQ-153.d's full view; `storage_status` is limited to full-scope viewers; `metric_tokens` groups are `model/token type` |
