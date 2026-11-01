@@ -19,8 +19,9 @@ import reflex as rx
 from reflex.event import EventSpec
 
 from reflex_agentlens.pages._base import AgentlensState, page_frame, ui_event
-from reflex_agentlens.query.dto import Viewer
+from reflex_agentlens.query.dto import ProjectSettingsPatch, Viewer
 from reflex_agentlens.views import pricing as pv
+from reflex_agentlens.views import redaction as rv
 from reflex_agentlens.views import settings as vm
 from reflex_agentlens.views.registry import registry, services
 
@@ -54,6 +55,21 @@ class SettingsState(AgentlensState):
     price_label: str = ""
     price_versions: list[dict[str, str]] = []
     unpriced: list[pv.UnpricedRow] = []
+    # redaction (P6-10.3)
+    presets: dict[str, bool] = {}
+    pattern_rows: list[rv.PatternRow] = []
+    field_rows: list[rv.FieldRow] = []
+    rule_errors: list[str] = []
+    preview_out: str = ""
+    preview_error: str = ""
+    # retention and storage (P6-10.3)
+    retention_text: str = ""
+    content_storage: bool = True
+    storage_usage: str = ""
+    storage_limit: str = ""
+    storage_counts: str = ""
+    last_purge: str = ""
+    storage_note: str = ""
 
     # ── helpers ──────────────────────────────────────────────────────────────────────────────
 
@@ -90,11 +106,17 @@ class SettingsState(AgentlensState):
         chosen = vm.pick_project(projects, wanted)
         self.project_id = chosen.id if chosen else ""
         self.project_name = chosen.name if chosen else ""
+        self.retention_text = str(chosen.retention_days) if chosen else ""
+        self.content_storage = chosen.content_storage if chosen else True
 
     async def _load_tab(self, viewer: Viewer) -> None:
         _, admin = services()
         if self.tab == "pricing":  # global, not per Project
             await self._load_pricing(viewer, None)
+        elif self.tab == "redaction" and self.project_id:
+            await self._load_redaction(viewer)
+        elif self.tab == "retention":
+            await self._load_storage(viewer)
         elif self.tab == "projects":
             self.keys = (
                 vm.key_rows(await admin.list_api_keys(viewer, self.project_id))
@@ -210,6 +232,135 @@ class SettingsState(AgentlensState):
     def close_reveal(self) -> None:
         """The plaintext leaves the state for good (REQ-170.b)."""
         self.reveal = vm.EMPTY_REVEAL
+
+    async def _load_redaction(self, viewer: Viewer) -> None:
+        _, admin = services()
+        rules = await admin.get_redaction_rules(viewer, self.project_id)
+        self.presets, self.pattern_rows, self.field_rows = rv.redaction_form(rules)
+        self.rule_errors, self.preview_out, self.preview_error = [], "", ""
+
+    async def _load_storage(self, viewer: Viewer) -> None:
+        """REQ-173: instance-wide numbers only for an admin who sees every Project."""
+        query, _ = services()
+        if viewer.allowed_project_ids is not None:
+            self.storage_note = "Instance-wide storage is shown to admins of every Project."
+            self.storage_usage = self.storage_limit = self.storage_counts = self.last_purge = ""
+            return
+        view = rv.storage_view(await query.storage_status(viewer))
+        self.storage_note = ""
+        self.storage_usage, self.storage_limit = view.usage, view.limit
+        self.storage_counts, self.last_purge = view.counts, view.last_purge
+
+    def _edited_rules(self) -> Any:
+        rules, errors = rv.rules_from_form(self.presets, self.pattern_rows, self.field_rows)
+        self.rule_errors = errors
+        return rules
+
+    # ── redaction (REQ-039.f, 172) ───────────────────────────────────────────────────────────
+
+    @rx.event
+    def toggle_preset(self, name: str) -> None:
+        if name in rv.PRESETS:
+            self.presets = {**self.presets, name: not self.presets.get(name, False)}
+
+    @rx.event
+    def set_pattern(self, index: int, field: str, value: str) -> None:
+        if field in ("name", "regex") and 0 <= index < len(self.pattern_rows):
+            rows = list(self.pattern_rows)
+            rows[index] = rows[index].model_copy(update={field: value[:2048]})
+            self.pattern_rows = rows
+
+    @rx.event
+    def toggle_pattern(self, index: int) -> None:
+        if 0 <= index < len(self.pattern_rows):
+            rows = list(self.pattern_rows)
+            rows[index] = rows[index].model_copy(update={"enabled": not rows[index].enabled})
+            self.pattern_rows = rows
+
+    @rx.event
+    def add_pattern_row(self) -> None:
+        self.pattern_rows = [*self.pattern_rows, rv.PatternRow()]
+
+    @rx.event
+    def remove_pattern_row(self, index: int) -> None:
+        self.pattern_rows = [r for i, r in enumerate(self.pattern_rows) if i != index]
+
+    @rx.event
+    def set_field_rule(self, index: int, field: str, value: str) -> None:
+        if field in ("key_glob", "action") and 0 <= index < len(self.field_rows):
+            rows = list(self.field_rows)
+            rows[index] = rows[index].model_copy(update={field: value[:256]})
+            self.field_rows = rows
+
+    @rx.event
+    def add_field_row(self) -> None:
+        self.field_rows = [*self.field_rows, rv.FieldRow()]
+
+    @rx.event
+    def remove_field_row(self, index: int) -> None:
+        self.field_rows = [r for i, r in enumerate(self.field_rows) if i != index]
+
+    @ui_event
+    async def save_redaction(self, viewer: Viewer) -> None:
+        """REQ-172.a: regexes are compiled and timed by the service at save."""
+        rules = self._edited_rules()
+        if rules is None:
+            self.action_error = "Fix the redaction rules before saving."
+            return
+        _, admin = services()
+        project_id = self.project_id
+        await self._act(
+            viewer,
+            lambda: admin.save_redaction_rules(viewer, project_id, rules),
+            f"Redaction rules saved. {rv.NOT_REWRITTEN}",
+        )
+        if self.action_error:
+            self.action_error = rv.rule_error_label(self.action_error)
+            return
+        await self._load_redaction(viewer)
+        self.action_done = f"Redaction rules saved. {rv.NOT_REWRITTEN}"
+
+    @ui_event
+    async def run_preview(self, viewer: Viewer, data: dict[str, Any]) -> None:
+        """REQ-172.b (SHOULD): the unsaved rules on a sample; nothing is stored or logged.
+        Allowed in demo mode because it changes nothing."""
+        self.preview_out = self.preview_error = ""
+        rules = self._edited_rules()
+        if rules is None:
+            self.preview_error = "Fix the redaction rules to preview them."
+            return
+        sample = str(data.get("sample", ""))
+        if not sample.strip():
+            self.preview_error = "Paste sample text or a span as JSON."
+            return
+        _, admin = services()
+        try:
+            self.preview_out = admin.preview_redaction(viewer, rules, sample)
+        except Exception as exc:
+            self.preview_error = rv.rule_error_label(vm.action_error(exc))
+
+    # ── retention (REQ-173) ──────────────────────────────────────────────────────────────────
+
+    @rx.event
+    def toggle_content(self) -> None:
+        self.content_storage = not self.content_storage
+
+    @ui_event
+    async def save_retention(self, viewer: Viewer, data: dict[str, Any]) -> None:
+        days, problem = rv.retention_days(str(data.get("days", "")))
+        if days is None:
+            self.action_error = problem
+            return
+        patch = ProjectSettingsPatch(retention_days=days, content_storage=self.content_storage)
+        _, admin = services()
+        project_id = self.project_id
+        saved = await self._act(
+            viewer,
+            lambda: admin.update_project_settings(viewer, project_id, patch),
+            "Retention settings saved.",
+        )
+        if saved is not None:
+            await self._load_projects(viewer, saved.id)
 
     # ── pricing (REQ-060.c, 171) ─────────────────────────────────────────────────────────────
 
@@ -558,6 +709,118 @@ def pricing_tab() -> rx.Component:
     )  # fmt: skip
 
 
+def _preset(name: str, label: str) -> rx.Component:
+    return rx.el.label(
+        rx.el.input(type="checkbox", checked=S.presets[name], read_only=True,
+                    disabled=~S.can_mutate, on_click=S.toggle_preset(name)),  # type: ignore[operator]
+        rx.el.span(label),
+    )  # fmt: skip
+
+
+def _pattern_row(row: Any, index: Any) -> rx.Component:
+    return rx.el.tr(
+        rx.el.td(rx.el.input(value=row.name, aria_label="Rule name", size=16,
+                             read_only=~S.can_mutate,
+                             on_change=lambda v: S.set_pattern(index, "name", v))),  # type: ignore[operator]
+        rx.el.td(rx.el.input(value=row.regex, aria_label="Regular expression", size=40,
+                             read_only=~S.can_mutate, spell_check=False,
+                             on_change=lambda v: S.set_pattern(index, "regex", v))),  # type: ignore[operator]
+        rx.el.td(rx.el.input(type="checkbox", checked=row.enabled, read_only=True,
+                             aria_label="Enabled", disabled=~S.can_mutate,
+                             on_click=S.toggle_pattern(index))),  # type: ignore[operator]
+        rx.el.td(rx.cond(S.can_mutate, rx.el.button(
+            "Remove", type="button", on_click=S.remove_pattern_row(index)))),  # type: ignore[operator]
+    )  # fmt: skip
+
+
+def _field_row(row: Any, index: Any) -> rx.Component:
+    return rx.el.tr(
+        rx.el.td(rx.el.input(value=row.key_glob, aria_label="Attribute key", size=32,
+                             read_only=~S.can_mutate,
+                             on_change=lambda v: S.set_field_rule(index, "key_glob", v))),  # type: ignore[operator]
+        rx.el.td(rx.el.select(rx.el.option("Mask", value="mask"),
+                              rx.el.option("Drop", value="drop"),
+                              value=row.action, disabled=~S.can_mutate, aria_label="Action",
+                              on_change=lambda v: S.set_field_rule(index, "action", v))),  # type: ignore[operator]
+        rx.el.td(rx.cond(S.can_mutate, rx.el.button(
+            "Remove", type="button", on_click=S.remove_field_row(index)))),  # type: ignore[operator]
+    )  # fmt: skip
+
+
+def redaction_tab() -> rx.Component:
+    return rx.cond(S.project_id != "", rx.fragment(
+        rx.el.p(rv.NOT_REWRITTEN, role="note", class_name="agentlens-notice"),
+        rx.cond(S.rule_errors.length() > 0,  # type: ignore[attr-defined]
+                rx.el.ul(rx.foreach(S.rule_errors, rx.el.li), role="alert",
+                         class_name="agentlens-error")),
+        rx.el.fieldset(rx.el.legend("Presets"),
+                       *[_preset(name, label) for name, label in rv.PRESETS.items()]),
+        rx.el.section(
+            rx.el.h3("Pattern rules"),
+            rx.el.p("Matches in text and attribute values are replaced with [REDACTED:name]."),
+            rx.el.table(
+                rx.el.thead(rx.el.tr(*[rx.el.th(h, scope="col") for h in
+                                       ("Name", "Regular expression", "Enabled", "")])),
+                rx.el.tbody(rx.foreach(S.pattern_rows, _pattern_row)),
+                class_name="agentlens-table"),
+            rx.cond(S.can_mutate, rx.el.button("Add pattern rule", type="button",
+                                               on_click=S.add_pattern_row)),
+        ),
+        rx.el.section(
+            rx.el.h3("Field rules"),
+            rx.el.p("Attribute keys (* matches any text) whose values are masked or dropped."),
+            rx.el.table(
+                rx.el.thead(rx.el.tr(*[rx.el.th(h, scope="col") for h in
+                                       ("Attribute key", "Action", "")])),
+                rx.el.tbody(rx.foreach(S.field_rows, _field_row)),
+                class_name="agentlens-table"),
+            rx.cond(S.can_mutate, rx.el.button("Add field rule", type="button",
+                                               on_click=S.add_field_row)),
+        ),
+        rx.cond(S.can_mutate, rx.el.button("Save redaction rules", type="button",
+                                           on_click=S.save_redaction)),
+        rx.el.section(
+            rx.el.h3("Preview"),
+            rx.el.form(
+                rx.el.label(rx.el.span("Sample text, or a span as JSON (not stored)"),
+                            rx.el.textarea(name="sample", rows=6, spell_check=False)),
+                rx.el.button("Preview with these rules", type="submit"),
+                on_submit=S.run_preview, reset_on_submit=False,
+            ),
+            rx.cond(S.preview_error != "",
+                    rx.el.p(S.preview_error, role="alert", class_name="agentlens-error")),
+            rx.cond(S.preview_out != "", rx.el.pre(rx.el.code(S.preview_out))),
+        ),
+    ))  # fmt: skip
+
+
+def retention_tab() -> rx.Component:
+    return rx.fragment(
+        rx.cond(S.project_id != "", rx.el.form(
+            rx.el.h3("Retention for ", S.project_name),
+            rx.el.label(rx.el.span("Maximum age in days (0 keeps data forever)"),
+                        rx.el.input(name="days", default_value=S.retention_text,
+                                    key=S.project_id + S.retention_text, input_mode="numeric",
+                                    read_only=~S.can_mutate, max_length=4)),
+            rx.el.label(rx.el.input(type="checkbox", checked=S.content_storage, read_only=True,
+                                    disabled=~S.can_mutate, on_click=S.toggle_content),
+                        rx.el.span("Store message and tool content")),
+            rx.cond(S.can_mutate, rx.el.button("Save", type="submit")),
+            on_submit=S.save_retention, reset_on_submit=False,
+        )),
+        rx.el.section(
+            rx.el.h3("Storage"),
+            rx.cond(S.storage_note != "", rx.el.p(S.storage_note),
+                    rx.el.dl(
+                        rx.el.dt("Usage"), rx.el.dd(S.storage_usage),
+                        rx.el.dt("Size limit"), rx.el.dd(S.storage_limit),
+                        rx.el.dt("Stored"), rx.el.dd(S.storage_counts),
+                        rx.el.dt("Last purge"), rx.el.dd(S.last_purge),
+                        class_name="agentlens-pairs")),
+        ),
+    )  # fmt: skip
+
+
 def requires_admin() -> rx.Component:
     return rx.el.div(
         rx.el.h2("Requires admin"),
@@ -573,7 +836,13 @@ def body() -> rx.Component:
             _tabs(),
             _notices(),
             rx.cond(S.projects.length() > 0, _project_picker()),  # type: ignore[attr-defined]
-            rx.match(S.tab, ("pricing", pricing_tab()), projects_tab()),
+            rx.match(
+                S.tab,
+                ("pricing", pricing_tab()),
+                ("redaction", redaction_tab()),
+                ("retention", retention_tab()),
+                projects_tab(),
+            ),
         ),
         rx.cond(S.loaded, requires_admin()),
     )

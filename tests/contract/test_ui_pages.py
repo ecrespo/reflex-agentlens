@@ -420,3 +420,54 @@ async def test_settings_pricing_editor_and_csv_round_trip_req_171(
     assert state.action_error == ""
     assert "LLM calls re-priced" in state.action_done
     assert model not in {u.model for u in state.unpriced}
+
+
+@pytest.mark.usefixtures("wired")
+async def test_settings_redaction_and_retention_req_172_173(
+    db: ContractDB, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P6-10.3: preview the unsaved rules, an invalid regex names its row, saving says stored
+    data is not rewritten; retention saves and storage usage and the last purge are shown."""
+    from reflex_agentlens.pages.settings_page import SettingsState
+
+    await setup(db, tmp_path)
+    state = _settings(monkeypatch, "tab=redaction&project=shop")
+    await state.load_settings()
+    assert state.error_kind == ""
+    assert state.presets["secrets"] is True  # REQ-170.a: the default preset is on
+
+    state.add_pattern_row()
+    state.set_pattern(0, "name", "order_id")
+    state.set_pattern(0, "regex", r"ORD-\d+")
+    await state.run_preview({"sample": "ship ORD-1234 now"})
+    assert state.preview_error == ""
+    assert "ORD-1234" not in state.preview_out
+    assert "[REDACTED:order_id]" in state.preview_out
+
+    state.add_pattern_row()
+    state.set_pattern(1, "name", "broken")
+    state.set_pattern(1, "regex", "(unclosed")
+    await state.save_redaction()
+    assert state.action_error.startswith("Pattern rule 2: invalid regex")
+    state.remove_pattern_row(1)
+    await state.save_redaction()
+    assert state.action_error == ""
+    assert "not rewritten" in state.action_done
+
+    _set_url(monkeypatch, SettingsState, "http://h/obs/settings?tab=redaction&project=shop")
+    await state.load_settings()
+    assert [r.name for r in state.pattern_rows] == ["order_id"]  # persisted
+
+    _set_url(monkeypatch, SettingsState, "http://h/obs/settings?tab=retention&project=shop")
+    await state.load_settings()
+    assert state.retention_text == "30"
+    assert " estimated" in state.storage_usage
+    assert state.storage_counts.endswith(" spans")
+    assert state.last_purge == "No purge has run yet."
+    await state.save_retention({"days": "x"})
+    assert "whole number" in state.action_error
+    state.toggle_content()
+    await state.save_retention({"days": "7"})
+    assert state.action_error == ""
+    assert (state.retention_text, state.content_storage) == ("7", False)
+    assert [p.retention for p in state.projects] == ["7 days"]
