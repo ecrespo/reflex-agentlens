@@ -6,7 +6,7 @@
 |---|---|
 | **Author** | Ernesto Crespo (`ecrespo`) |
 | **Status** | `APPROVED` |
-| **API version** | v1.4.1 (ships with package 0.1.0) |
+| **API version** | v1.4.2 (ships with package 0.1.0) |
 | **Date** | 2026-10-30 |
 | **Related PRD** | [`specs/prd/agentlens-v0.1.md`](../prd/agentlens-v0.1.md) v1.1 |
 | **Governed by** | [`specs/constitution.md`](../constitution.md) v1.0 |
@@ -324,6 +324,7 @@ class StorageBackend(Protocol):
     async def revoke_api_key(self, key_id: str, at_ns: int) -> None: ...
     async def save_pricing(self, entries: Sequence[PricingEntry], author: str) -> PricingVersion: ...
     async def list_pricing_versions(self) -> list[PricingVersionMeta]: ...
+    async def get_pricing_version(self, version: int) -> PricingVersion: ...  # NotFound if absent
     async def list_unpriced_models(self, project_ids: ProjectScope) -> list[UnpricedModel]: ...
     async def save_redaction_rules(self, project_id: str, rules: RedactionRuleSet) -> None: ...
     async def list_saved_filters(self, project_id: str) -> list[SavedFilter]: ...
@@ -1252,3 +1253,4 @@ When stdout is not a TTY, the key line is replaced by
 | 1.3.1 | 2026-10-31 | Delta `changes/2026-10-saved-filter-scope/`: `delete_filter(project_id, filter_id)` is scoped to its Project (IDOR found by a security review) |
 | 1.4 | 2026-10-31 | Delta `changes/2026-10-p4-query-prep/`: §6.7 DTO reference with every field (A-05; `RunSummary.usage_source`), §6.8 kind mapping (A-10); `get_trace` paging, `get_span_detail`, `get_project`, `list_pricing_versions`, `list_projects_admin`; `RunFilter.sources` holds Source labels; cursor tag carries the sort |
 | 1.4.1 | 2026-10-31 | P4 implementation notes: `get_graph(full=)` for REQ-153.d's full view; `storage_status` is limited to full-scope viewers; `metric_tokens` groups are `model/token type` |
+| 1.4.2 | 2026-11-01 | P4 implementation notes: store `get_pricing_version(version)` backs `get_pricing(viewer, version)` (REQ-171.a); `subscribe` yields an async generator |
