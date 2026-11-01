@@ -1382,7 +1382,7 @@ tests under `tests/unit/ui/` (view models, URL codecs, Mermaid text, sanitizers:
 - **Depends on**: —
 - **Done**: XSS fixture unit tests (`<script>`, `javascript:` links, `onerror`, remote images,
   data URIs) produce inert output.
-- [ ]
+- [x] 2026-11-01 · PR #38
 
 ### P6-06.2 · Span detail drawer
 - **What**: `components/drawer.py`: header (name, kind, timing, status, Source), LLM messages as
@@ -1391,7 +1391,7 @@ tests under `tests/unit/ui/` (view models, URL codecs, Mermaid text, sanitizers:
 - **REQ / design**: REQ-151, 152, 327
 - **Depends on**: P6-06.1, P6-05.2
 - **Done**: view-model tests for each section from `SpanDetail` fixtures; compile test.
-- [ ]
+- [x] 2026-11-01 · PR #38
 
 ### P6-07.1 · Mermaid graph text
 - **What**: `components/graph_text.py`: `RunGraph` → `flowchart LR` text with `classDef taken /
@@ -1400,7 +1400,7 @@ tests under `tests/unit/ui/` (view models, URL codecs, Mermaid text, sanitizers:
 - **Depends on**: —
 - **Done**: unit tests with hostile labels (quotes, brackets, `-->`, `%%`, HTML) that cannot
   break out of a node or inject directives.
-- [ ]
+- [x] 2026-11-01 · PR #38
 
 ### P6-07.2 · Graph view and replay
 - **What**: graph tab with `reflex-mermaidjs` (`security_level="strict"`, no icon packs), node
@@ -1409,7 +1409,7 @@ tests under `tests/unit/ui/` (view models, URL codecs, Mermaid text, sanitizers:
 - **REQ / design**: REQ-153, 154, DD-011
 - **Depends on**: P6-07.1, P6-05.2
 - **Done**: replay step view-model tests; compile test.
-- [ ]
+- [x] 2026-11-01 · PR #38
 
 ### P6-08.1 · Sessions pages
 - **What**: `pages/sessions.py` (list with sort and cursor) and `pages/session.py` (Runs in
@@ -1694,6 +1694,7 @@ the matrix). No requirement is deferred at this point.
 | 2026-11-01 | P5-05.1, 06.1, 07.1, 08.1 | Done | PR #34; graceful shutdown in-process through `run_server`'s stop event (in-flight exports 200, late 503, `/healthz` `shutting_down`; the SIGTERM → exit 0 path stays in the subprocess tests); rebuild racing late spans converges (second rebuild changes 0 Runs, views unchanged) on both backends; `core/telemetry.py` (Tech Design §7.2 metrics/spans with closed label sets, no-op recorder) + `app/selftelemetry.py` (private OTLP providers, loop check → exit 2, missing extra named, span status without exception messages); golden fixtures through `serve` and `collect` (PG) into twin Projects give identical responses and views (REQ-004.c). The OTLP HTTP exporter joins the dev group. **P5 gate**: every CLI command and every API §8.3 exit code (0–5) has an integration test; `collect` on PG and `serve` pass the health, shutdown and outage tests; 1,517 tests green on SQLite and PostgreSQL; `mypy --strict` clean; 6 import contracts kept |
 | 2026-11-01 | P6-01.1, 01.2, 02.1, 03.1, 03.2 | Done | PR #36; Tasks v1.5 and Delta `changes/2026-11-p6-ui-prep/` (A-12) merged as PR #35. Reflex-free view models in the new `reflex_agentlens.views` package (`guard`, `registry`, `chrome`, `snippets`, `tokens`) instead of `pages/_*` modules, because importing any `pages.*` module imports Reflex; new import contract (no Reflex, no UI packages in `views`). Contract 6 forbids direct `store` imports only (the `query` path is indirect by design); typing-only imports excluded. `pages/_base.py` (`AgentlensState`, `ui_event`, frame, inline states), `components/theme.py` + `chrome.py`, page frames per route, lazy `reflex_agentlens` API (`standalone_app` follows in P6-11), `app/mount.py`. Import audit in a clean subprocess; A-12 rule tested with an injected clock. Fix found on the way: a flaky P5 shutdown test now waits for five queued batches |
 | 2026-11-01 | P6-04.1, 04.2, 05.1, 05.2 | Done | PR #37. View models in `views/runs.py`, `views/trace.py`, `views/fmt.py` (not `pages/runs_vm.py` / `components/waterfall_vm.py`, same reason as batch 1); pages `pages/runs_page.py`, `pages/trace_page.py`. Live updates run as Reflex background tasks that end on the next notice after a reload or route change. Cost and raw tabs show Run totals and identifiers; the graph tab and span drawer stay placeholders until P6-07.2 / P6-06.2. Extra: page-event tests over real services on both backends |
+| 2026-11-01 | P6-06.1, 06.2, 07.1, 07.2 | Done | PR #38. Pure parts in `views/richtext.py`, `views/detail.py`, `views/graph.py`; Reflex parts in `components/richtext.py`, `components/drawer.py` and the trace page. Rich text: react-markdown without rehype-raw/math, `skipHtml`, one URL policy (http, https, mailto) in Python and JS, checked against each other with node when available; images become links. The raw tab is built lazily from the `raw` already in `get_span_detail` (no second `get_span_raw` call). Graph labels use a closed character set plus Mermaid entity codes. Tab, span and replay changes rewrite the URL with `history.replaceState` instead of reloading the trace. Import audit now checks the destination of symlinks/renames (reflex-mermaidjs links its asset under the working directory) |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).
