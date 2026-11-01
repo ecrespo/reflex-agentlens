@@ -849,7 +849,7 @@ first or in the same commit (Art. 8). Branches: `feat/P3-<nn>-<slug>` from `deve
 - **Depends on**: P3-08.2
 - **Done**: route tests with an in-memory store fake and a real SQLite backend; every row of the
   API §3.3 table has a test.
-- [ ]
+- [x] 2026-10-31 · PR #24
 
 ### P3-10.1 · OTLP/gRPC services
 - **What**: `ingest/grpc.py`: `TraceService`, `MetricsService`, `LogsService` → `UNIMPLEMENTED`;
@@ -859,7 +859,7 @@ first or in the same commit (Art. 8). Branches: `feat/P3-<nn>-<slug>` from `deve
 - **Depends on**: P3-08.2
 - **Done**: tests with the official OTLP gRPC exporter against an ephemeral port; every status
   row covered.
-- [ ]
+- [x] 2026-10-31 · PR #24
 
 ### P3-11.1 · Metrics ingestion
 - **What**: `ingest/metrics.py`: GenAI metric allowlist (Tech Design §5.3 "Metrics persisted"),
@@ -869,7 +869,7 @@ first or in the same commit (Art. 8). Branches: `feat/P3-<nn>-<slug>` from `deve
 - **Depends on**: P3-09.1
 - **Done**: a mixed export stores only GenAI points; counters and histograms both handled;
   `partialSuccess` counts only invalid GenAI points.
-- [ ]
+- [x] 2026-10-31 · PR #24
 
 ### P3-12.1 · Property tests: order invariance and idempotency
 - **What**: `tests/property/`: hypothesis permutations, batch splits and duplicates of fixture span
@@ -1103,6 +1103,7 @@ the matrix). No requirement is deferred at this point.
 | 2026-10-31 | P3-03.3, 05.1, 05.2 | Done | PR #21; graph nodes (kind decided from attributes: LangGraph/OI chain nodes are `node`), Session key (A-08 HMAC), search document, `normalize_batch` in `normalize/pipeline.py` (lazy re-export: import cycle with the redaction engine); bundled pricing from litellm@187f936cb345 (651 entries, MIT checked, `NOTICE`), bootstrap, cost at the version in effect at call start. **Not done**: agent handoffs (`gen_ai.transfer.target.name`) are not derived into `explicit_parent_key` |
 | 2026-10-31 | P3-06.1, 06.2, 07.1 | Done | PR #22; `write_group` with per-batch savepoints (SQLSTATE class 22/23 → `BatchRejected`, PG retries the group once on deadlock/serialization), `get_or_create_secret`; writer with a byte-bounded queue, linger/span-cap grouping, commit-latency p50; a failed group is an outage only if `ping()` also fails, otherwise batches are retried one by one and only the failing one becomes `BatchRejected(invalid_data)` (security review: no cross-tenant failure); engine thread + loop, `submit` via `run_coroutine_threadsafe`, drain on stop, supervisor (5 restarts / 10 min then down). Added `[ingest] max_clock_skew` (API §8.2, A-17). **Found**: `tests/unit/store/test_sqlite_backend.py::test_open_is_idempotent_and_never_migrates` leaks a sqlite3 connection (fails only under `-W error`, pre-existing on develop) |
 | 2026-10-31 | P3-07.2, 08.1, 08.2 | Done | PR #23; `ingest/jobs.py`: finalizer every minute and purge every `purge_interval` under `job_lock` (second holder skips), `SettingsCache` (per-Project settings + compiled rules + retention, all pricing versions, session key) dropped per Project on `settings_changed` and reloaded every 30 s (pricing changes have no event); `ingest/admission.py`: key header precedence, salted-hash check, 5 s positive cache cleared on `settings_changed`, touch ≤ 1/min, internal failure reasons; `ingest/limits.py`: lazy token buckets (oversized batch admitted from a full bucket into debt), Content-Length precheck, capped read, incremental gzip with output cap (1 GiB bomb, peak memory bounded), overload guard. Wiring into the engine/routes comes with P3-09/10 |
+| 2026-10-31 | P3-09.1, 10.1, 11.1 | Done | PR #24; `ingest/core.py` `IngestCore` per engine run (admit → decode → span bucket → normalize → commit; metric writes) reached from HTTP through the new `IngestEngine.call`, `build_engine` wires core, jobs, auth-cache watcher and gRPC; `ingest/http.py` Starlette routes (`/v1/logs` 404); `ingest/grpc.py` (LogsService not registered → UNIMPLEMENTED; RetryInfo only on retryable codes); `ingest/metrics.py`. `google.rpc.Status`/`RetryInfo` are hand-encoded (`ingest/status.py`) instead of adding googleapis-common-protos. Security review: metric attributes now get the span redaction/hook/truncation and GenAI points count against the span bucket. Dev group gained the OTLP gRPC exporter (same pins as `bench`). **Not done**: the API §3.3 demo-mode 403 row (demo mode comes with P4-06/P8-02) |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).

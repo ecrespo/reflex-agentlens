@@ -24,7 +24,7 @@ import time
 from collections import deque
 from collections.abc import Awaitable, Callable, Coroutine, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeVar
 
 from reflex_agentlens.ingest.errors import ShuttingDown
 from reflex_agentlens.ingest.writer import BatchOutcome, GroupStore, WriteQueue, Writer
@@ -33,6 +33,7 @@ from reflex_agentlens.store.records import NormalizedBatch
 __all__ = ["EngineCrashed", "EngineRuntime", "EngineStore", "IngestEngine", "Service"]
 
 log = logging.getLogger(__name__)
+T = TypeVar("T")
 
 
 class EngineStore(GroupStore, Protocol):
@@ -52,6 +53,7 @@ class EngineRuntime:
     queue: WriteQueue
     writer: Writer
     stop_requested: asyncio.Event = field(default_factory=asyncio.Event)
+    app: Any = None  # what ``setup`` built for this run (the ingest core: auth, limits, cache)
 
 
 # a long-running coroutine on the ingest loop (gRPC server, jobs)
@@ -66,6 +68,7 @@ class IngestEngine:
         queue_memory_bytes: int,
         shutdown_grace_s: float = 20.0,
         services: Sequence[Service] = (),
+        setup: Callable[[EngineRuntime], Any] | None = None,
         writer_options: dict[str, Any] | None = None,
         restart_backoff: tuple[float, float] = (1.0, 30.0),
         max_restarts: int = 5,
@@ -77,6 +80,7 @@ class IngestEngine:
         self.queue_memory_bytes = queue_memory_bytes
         self.shutdown_grace_s = shutdown_grace_s
         self.services = tuple(services)
+        self.setup = setup
         self.writer_options = dict(writer_options or {})
         self.restart_backoff = restart_backoff
         self.max_restarts = max_restarts
@@ -89,7 +93,7 @@ class IngestEngine:
         self._supervisor: asyncio.Task[None] | None = None
         self._stopping = False
         self._restarts: deque[float] = deque()
-        self._pending: set[concurrent.futures.Future[BatchOutcome]] = set()
+        self._pending: set[concurrent.futures.Future[Any]] = set()
         self._pending_lock = threading.Lock()
         self.drained = True
         self.gave_up = False
@@ -155,22 +159,32 @@ class IngestEngine:
 
     async def submit(self, batch: NormalizedBatch, size: int | None = None) -> BatchOutcome:
         """Queue a batch from any loop; resolves after its commit (``ingest.writer``)."""
+        return await self.call(lambda rt: _put(rt, batch, size))
+
+    async def call(self, fn: Callable[[EngineRuntime], Coroutine[Any, Any, T]]) -> T:
+        """Run ``fn(runtime)`` on the ingest loop from any loop and await its result.
+
+        Everything that touches the store (its connections are bound to the ingest loop) or the
+        per-run state goes through here. ``ShuttingDown`` when the engine is not running.
+        """
         rt = self._runtime
         if rt is None or self._stopping:
             raise ShuttingDown()
         with contextlib.suppress(RuntimeError):
             if asyncio.get_running_loop() is rt.loop:
-                return await _put(rt, batch, size)
+                return await fn(rt)
+        coro = fn(rt)
         try:
-            cf = asyncio.run_coroutine_threadsafe(_put(rt, batch, size), rt.loop)
+            cf = asyncio.run_coroutine_threadsafe(coro, rt.loop)
         except RuntimeError:  # the ingest loop is closed
+            coro.close()
             raise ShuttingDown() from None
         with self._pending_lock:
             self._pending.add(cf)
         cf.add_done_callback(self._forget)
         return await asyncio.wrap_future(cf)
 
-    def _forget(self, cf: concurrent.futures.Future[BatchOutcome]) -> None:
+    def _forget(self, cf: concurrent.futures.Future[Any]) -> None:
         with self._pending_lock:
             self._pending.discard(cf)
 
@@ -220,6 +234,8 @@ class IngestEngine:
         queue = WriteQueue(self.queue_memory_bytes)
         writer = Writer(store, queue, **self.writer_options)
         rt = EngineRuntime(loop, store, queue, writer)
+        if self.setup is not None:
+            rt.app = self.setup(rt)
         tasks = {asyncio.create_task(writer.run(), name="ingest-writer")}
         tasks |= {asyncio.create_task(svc(rt)) for svc in self.services}
         try:
