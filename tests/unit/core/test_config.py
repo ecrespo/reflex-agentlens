@@ -355,3 +355,19 @@ def _toml(v: object) -> str:
     if isinstance(v, list):
         return "[" + ", ".join(_toml(x) for x in v) + "]"
     return f'"{v}"'
+
+
+def test_command_defaults_sit_below_every_source_req_202a(tmp_path: Path) -> None:
+    """``collect`` listens on 4318 unless TOML, environment or a flag says otherwise."""
+    collect = {"server.http_port": 4318}
+    assert _load(tmp_path, command_defaults=collect).server.http_port == 4318
+    toml = "[server]\nhttp_port = 9000\n"
+    assert _load(tmp_path, toml, command_defaults=collect).server.http_port == 9000
+    env = {"AGENTLENS_SERVER_HTTP_PORT": "9100"}
+    assert _load(tmp_path, env=env, command_defaults=collect).server.http_port == 9100
+    flags = {"server.http_port": 9200}
+    cfg = _load(tmp_path, cli_overrides=flags, command_defaults=collect)
+    assert cfg.server.http_port == 9200
+    with pytest.raises(ConfigError) as exc:
+        _load(tmp_path, command_defaults={"server.nope": 1})
+    assert exc.value.source == "command default"

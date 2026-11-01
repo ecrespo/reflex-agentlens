@@ -358,13 +358,13 @@ def _env_layer(env: Mapping[str, str]) -> _Layer:
     return layer
 
 
-def _cli_layer(overrides: Mapping[str, object]) -> _Layer:
+def _cli_layer(overrides: Mapping[str, object], source: str = "command line") -> _Layer:
     layer: _Layer = {}
     for dotted, value in overrides.items():
         section, _, key = dotted.partition(".")
         if section not in SECTIONS or key not in SECTIONS[section].model_fields:
-            raise ConfigError(dotted, "command line", "unknown setting")
-        layer[(section, key)] = (value, "command line")
+            raise ConfigError(dotted, source, "unknown setting")
+        layer[(section, key)] = (value, source)
     return layer
 
 
@@ -379,8 +379,13 @@ def load_config(
     env: Mapping[str, str] | None = None,
     cli_overrides: Mapping[str, object] | None = None,
     cwd: str | Path | None = None,
+    command_defaults: Mapping[str, object] | None = None,
 ) -> AgentlensConfig:
-    """Resolve the effective configuration; raise :class:`ConfigError` naming key and source."""
+    """Resolve the effective configuration; raise :class:`ConfigError` naming key and source.
+
+    ``command_defaults`` replace built-in defaults for one command (``collect`` listens on
+    4318) and sit below every other source.
+    """
     env = os.environ if env is None else env
     toml_path: Path | None = None
     if config_path is not None:
@@ -393,6 +398,7 @@ def load_config(
 
     merged: _Layer = {}
     for layer in (
+        _cli_layer(command_defaults or {}, "command default"),
         _toml_layer(toml_path) if toml_path else {},
         _env_layer(env),
         _cli_layer(cli_overrides or {}),
