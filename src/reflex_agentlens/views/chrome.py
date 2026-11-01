@@ -15,6 +15,7 @@ from reflex_agentlens.query.dto import ProjectRef, SourceView, Viewer
 from reflex_agentlens.query.timeexpr import check_time_expr
 
 __all__ = [
+    "CUSTOM",
     "DEFAULT_RANGE",
     "RANGES",
     "Chrome",
@@ -27,7 +28,7 @@ __all__ = [
 
 RANGES: dict[str, str] = {"1h": "now-1h", "24h": "now-24h", "7d": "now-7d", "30d": "now-30d"}
 DEFAULT_RANGE = "24h"
-CUSTOM = "custom"
+CUSTOM = "custom"  # a from/to pair that is not one of RANGES
 MAX_SOURCES = 32
 MAX_ID = 64
 

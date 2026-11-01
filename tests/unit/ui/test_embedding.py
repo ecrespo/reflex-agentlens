@@ -161,3 +161,12 @@ def test_ui_event_hides_the_viewer_argument() -> None:
     import inspect
 
     assert list(inspect.signature(handler.fn).parameters) == ["self", "project"]
+
+
+def test_chrome_bar_renders_with_every_range_req_130a() -> None:
+    from reflex_agentlens.components.chrome import ChromeState, chrome_bar
+
+    rendered = str(chrome_bar().render())
+    for label in ("1 h", "24 h", "7 d", "30 d"):
+        assert label in rendered
+    assert "load_chrome" in ChromeState.event_handlers

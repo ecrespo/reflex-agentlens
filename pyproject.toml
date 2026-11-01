@@ -96,6 +96,8 @@ select = ["E", "F", "W", "I", "UP", "B", "S", "T20", "C4", "SIM", "PT", "ASYNC",
 "tests/**" = ["S101", "S603"]
 "src/reflex_agentlens/cli/**" = ["T20"]
 "scripts/**" = ["T20"]
+# Reflex state vars are declared with (copied-per-instance) mutable defaults.
+"src/reflex_agentlens/{pages,components}/**" = ["RUF012"]
 
 [tool.mypy]
 python_version = "3.11"
