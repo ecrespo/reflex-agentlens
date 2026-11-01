@@ -1,10 +1,10 @@
 # Tasks — reflex-agentlens v0.1
 
-> Source specs: [Constitution](../constitution.md) v1.2 · [PRD](../prd/agentlens-v0.1.md) v1.1 ·
-> [API Spec](../api/agentlens-api-v1.md) v1.4.3 · [Tech Design](../technical/agentlens-architecture.md) v1.4 ·
+> Source specs: [Constitution](../constitution.md) v1.2 · [PRD](../prd/agentlens-v0.1.md) v1.2 ·
+> [API Spec](../api/agentlens-api-v1.md) v1.4.4 · [Tech Design](../technical/agentlens-architecture.md) v1.4 ·
 > [Data Model](../data-model/agentlens-schema.md) v1.3 · [Implementation Plan](../plans/agentlens-phase-1.md) v1.0
-> Plan phases detailed in this revision: **P0 (spikes), P1 (foundation and `core`), P2 (store), P3 (ingest), P4 (query) and P5 (runtime, CLI)** · Generated: 2026-11-01
-> Status: `APPROVED` (P3–P5 detailing adopted under the standing authorization of 2026-10-31) · Version 1.4
+> Plan phases detailed in this revision: **P0 (spikes), P1 (foundation and `core`), P2 (store), P3 (ingest), P4 (query), P5 (runtime, CLI) and P6 (UI)** · Generated: 2026-11-01
+> Status: `APPROVED` (P3–P6 detailing adopted under the standing authorization of 2026-10-31) · Version 1.5
 
 ## How this file works
 
@@ -1255,7 +1255,249 @@ P5-03.4 · (3) P5-04.1, P5-04.2 · (4) P5-05.1, P5-06.1, P5-07.1, P5-08.1.
 
 ---
 
-## Phases P6–P10 — to be detailed at phase start
+## Phase P6 — UI
+
+Detailed 2026-11-01 after P5. Inputs: PRD v1.2 REQ-101–107, 130–131, 140–174, 190–193, 324, 327;
+API v1.4.4 §6 (query DTOs and services), §7 (embedding API, routes, URL contract); Tech Design
+v1.4 DD-002, DD-011, DD-017, DD-018, §5.1, §5.5, §6.1, §11.1 (S1 results). Code lives under
+`src/reflex_agentlens/components/`, `pages/`, `app/` (mount, standalone, CSP) and `_webapp/`;
+tests under `tests/unit/ui/` (view models, URL codecs, Mermaid text, sanitizers: no browser) and
+`tests/smoke/` (Playwright, P6-12). Branches: `feat/P6-<nn>-<slug>` from `develop`.
+
+**Design notes.**
+- **View models.** Every page splits into a pure view-model module (DTOs in → display rows,
+  labels, URL params out; no Reflex import) and a thin Reflex layer (state vars, `on_load`,
+  event handlers, components). Unit tests target the view models; the smoke suite targets the
+  rendered pages. State vars hold the API §6.7 Pydantic DTOs directly (S1: supported).
+- **Event wrapper** (Tech Design §5.5): one decorator in `pages/_base.py` wraps every handler:
+  resolve the viewer (A-12 rule), call `query`/`admin`, map `StorageUnavailable` → banner,
+  `Forbidden` → "not authorized" state, anything else → generic error state plus a log line with
+  the exception class only (REQ-323).
+- **Auth hook** (PRD v1.2 REQ-191.a, API v1.4.4 §7.2): `on_load` always calls the hook; other
+  events reuse its result ≤ 30 s for the same client token, never across tokens. The viewer's
+  allowed Projects become the `dto.Viewer` passed to every service call (REQ-191.c).
+- **Services in the UI process.** Pages reach `QueryService`/`AdminService` through the runtime
+  of P5 (`app.lifespan.Runtime`), registered once per process; pages never import `store`
+  (import contract 6).
+- **Serving** (S1 recipe, P6-11): the exported frontend is copied to
+  `{data_dir}/web/<version>/`, the baked `localhost:8000` is rewritten to the bind port (and the
+  precompressed siblings regenerated), `REFLEX_STATES_WORKDIR`/web workdir are set **before**
+  Reflex is imported, `telemetry_enabled=False` and no sitemap in every rxconfig. CSP hashes are
+  computed from the shipped HTML, never hard-coded (DD-018).
+- **Third-party assets**: Mermaid with `security_level="strict"`, `font_awesome=False`,
+  `icon_packs=[]`; silverpoint bundles its fonts (REQ-324).
+
+### P6-01.1 · Theme and tokens
+- **What**: `components/theme.py`: `silverpoint_provider` with one palette; status tokens (ok,
+  error, in progress, unpriced) and the five span-kind colors of API §6.8; a contrast check of
+  every token pair used for text (WCAG AA) in a unit test; `.agentlens` root class, no global CSS.
+- **REQ / design**: REQ-130.e, 150.a, 190.d, DD-017
+- **Depends on**: —
+- **Done**: token table test (every kind and status has a color; text pairs ≥ 4.5:1).
+- [ ]
+
+### P6-01.2 · Base state, event wrapper, inline states
+- **What**: `pages/_base.py`: `AgentlensState(rx.State)` (class name prefixed `agentlens_`), the
+  event wrapper of the design notes, runtime registry (`set_runtime`/`services()`), banner,
+  error, "not authorized" and empty states; the empty state shows the quickstart snippet
+  (`OTEL_EXPORTER_OTLP_*` for the current Project).
+- **REQ / design**: REQ-130.b/d, 330 (UI), Tech Design §5.5
+- **Depends on**: P6-01.1
+- **Done**: unit tests of the wrapper's mapping (fake services raising each error class; the log
+  line carries the class name only) and of the snippet text.
+- [ ]
+
+### P6-02.1 · Shared chrome and URL state
+- **What**: `components/chrome.py` Project, Source and time-range selectors (1 h, 24 h, 7 d,
+  30 d, custom); `pages/_url.py` encode/decode of `project`, `source`, `from`, `to`, `live` per
+  API §7.2 (round trip; invalid values fall back to defaults, never raise).
+- **REQ / design**: REQ-130.a, API §7.2
+- **Depends on**: P6-01.2
+- **Done**: URL round-trip property test; selector options built from `list_projects` /
+  `list_sources` for a restricted viewer show only allowed Projects.
+- [ ]
+
+### P6-03.1 · Public embedding API
+- **What**: lazy `reflex_agentlens.__init__` (`__getattr__` for `mount`, `standalone_app`,
+  `configure`, `AgentlensConfig`, `Viewer`, `AuthHook`, `pages`); `pages.ROUTES`; `configure()`.
+  **No-I/O-on-import test**: an audit hook blocks sockets, subprocesses and file writes outside
+  the cwd during `import reflex_agentlens` and `import reflex_agentlens.pages` (S1 P0-05.3 rule).
+- **REQ / design**: REQ-190.a/b/c, Art. 7, API §7.1
+- **Depends on**: P6-01.2
+- **Done**: import-audit test green; `import reflex_agentlens` does not import `reflex`.
+- [ ]
+
+### P6-03.2 · Auth hook and `mount()`
+- **What**: auth-hook resolution per the design notes (A-12), redirect to `login_route` or the
+  "not authorized" state, allowed-Project restriction; `mount(app, *, auth, login_route=None,
+  prefix="/agentlens", ingest=False, demo=False, pages=None)` adding the API §7.2 routes.
+- **REQ / design**: REQ-190.a, 191.a/b/c (PRD v1.2), API §7.1–7.2
+- **Depends on**: P6-03.1
+- **Done**: tests of the Delta `changes/2026-11-p6-ui-prep/` (page load never cached, event cache
+  ≤ 30 s with an injected clock, no cross-token reuse); unauthenticated → no data; restricted
+  viewer sees only its Projects; `mount` registers exactly `pages.ROUTES` under the prefix.
+- [ ]
+
+### P6-04.1 · Runs view model and filter bar
+- **What**: `pages/runs_vm.py`: `RunSummary` → rows with the REQ-145.a columns (status,
+  duration, tokens, cost with the DD-012 footnote, "generic" badge); filter bar state ↔ the API
+  §6.2 grammar for every REQ-101 filter; saved filters (list, apply, save, delete).
+- **REQ / design**: REQ-101, 102, 131, 145.a
+- **Depends on**: P6-02.1
+- **Done**: unit tests per column and per filter (URL → `RunFilter` → URL).
+- [ ]
+
+### P6-04.2 · Runs page and live updates
+- **What**: `pages/runs.py`: table, keyset pagination, live insertion on the first page and an
+  "N new runs" indicator elsewhere (`subscribe` notices, coalesced ≤ 1/s), `live=0|1`.
+- **REQ / design**: REQ-140, 145.b/c
+- **Depends on**: P6-04.1
+- **Done**: view-model tests of notice merging (first page vs. other pages, truncated notice →
+  full refresh); page compiles (`rx.App` compile test).
+- [ ]
+
+### P6-05.1 · Waterfall view model
+- **What**: `components/waterfall_vm.py`: span tree → rows with proportional bars (offset and
+  width in % of the Run), GenAI-aware labels, kind colors, collapse beyond depth 3, "load more"
+  past the page size, placeholders for missing parents.
+- **REQ / design**: REQ-150, 037.b (UI), Art. 7 interpretation
+- **Depends on**: P6-01.1
+- **Done**: unit tests on golden traces (bar geometry, collapse, placeholder rows).
+- [ ]
+
+### P6-05.2 · Trace page
+- **What**: `pages/trace.py`: tabs (`waterfall|graph|cost|raw`), `span=` selection, live append
+  while the Run is `in_progress`, not-found state, generic traces without GenAI panels,
+  `project=` disambiguation.
+- **REQ / design**: REQ-103.b, 131, 150, API §7.2
+- **Depends on**: P6-05.1, P6-02.1
+- **Done**: compile test; view-model tests for the tab/URL state and the generic-trace case.
+- [ ]
+
+### P6-06.1 · Safe rich text
+- **What**: `components/richtext.py`: Markdown with raw HTML disabled, link-scheme allowlist
+  (`http`, `https`, `mailto`), no remote images (rendered as links), plain text for everything
+  else (React escaping).
+- **REQ / design**: REQ-327, 193
+- **Depends on**: —
+- **Done**: XSS fixture unit tests (`<script>`, `javascript:` links, `onerror`, remote images,
+  data URIs) produce inert output.
+- [ ]
+
+### P6-06.2 · Span detail drawer
+- **What**: `components/drawer.py`: header (name, kind, timing, status, Source), LLM messages as
+  role bubbles, tool I/O as collapsible JSON, errors and stack traces, raw-attributes tab (lazy
+  `get_span_raw`), token and cost breakdown; content-dropped and redacted badges.
+- **REQ / design**: REQ-151, 152, 327
+- **Depends on**: P6-06.1, P6-05.2
+- **Done**: view-model tests for each section from `SpanDetail` fixtures; compile test.
+- [ ]
+
+### P6-07.1 · Mermaid graph text
+- **What**: `components/graph_text.py`: `RunGraph` → `flowchart LR` text with `classDef taken /
+  error / approval / retry`, escaped labels, stable node IDs, collapse note above the node cap.
+- **REQ / design**: REQ-153, DD-011, Art. 7
+- **Depends on**: —
+- **Done**: unit tests with hostile labels (quotes, brackets, `-->`, `%%`, HTML) that cannot
+  break out of a node or inject directives.
+- [ ]
+
+### P6-07.2 · Graph view and replay
+- **What**: graph tab with `reflex-mermaidjs` (`security_level="strict"`, no icon packs), node
+  click → span selection; replay mode (`replay=`, `speed=1|2|5|step`) stepping spans in start
+  order.
+- **REQ / design**: REQ-153, 154, DD-011
+- **Depends on**: P6-07.1, P6-05.2
+- **Done**: replay step view-model tests; compile test.
+- [ ]
+
+### P6-08.1 · Sessions pages
+- **What**: `pages/sessions.py` (list with sort and cursor) and `pages/session.py` (Runs in
+  order, cumulative tokens/cost `area_chart`).
+- **REQ / design**: REQ-105, 160
+- **Depends on**: P6-02.1
+- **Done**: view-model tests (cumulative series); compile test.
+- [ ]
+
+### P6-09.1 · Dashboard
+- **What**: `pages/dashboard.py`: KPI cards and the silverpoint charts of DD-017's mapping,
+  per-panel failure states (`DashboardData.failed`), click-to-filter navigation to Runs
+  (SHOULD), live refresh ≤ 10 s, GenAI metrics chart (COULD).
+- **REQ / design**: REQ-106, 107, 130.c, 141
+- **Depends on**: P6-02.1
+- **Done**: view-model tests (series shaping, click → Runs URL); compile test.
+- [ ]
+
+### P6-10.1 · Settings: Projects and keys
+- **What**: Projects list/create/delete (name confirmation), keys create (plaintext once + copy +
+  `OTEL_EXPORTER_OTLP_*` snippet), list, revoke; admin gating; read-only demo view.
+- **REQ / design**: REQ-170, 174, 231.b
+- **Depends on**: P6-02.1
+- **Done**: view-model tests (the plaintext leaves state after the dialog closes; non-admin sees
+  no mutations); compile test.
+- [ ]
+
+### P6-10.2 · Settings: pricing
+- **What**: pricing editor (versions, entries, CSV import/export, unpriced models, recompute).
+- **REQ / design**: REQ-171, 172
+- **Depends on**: P6-10.1
+- **Done**: view-model tests (CSV round trip through `AdminService`, validation messages).
+- [ ]
+
+### P6-10.3 · Settings: redaction and retention
+- **What**: redaction editor with preview (SHOULD) and the "existing data is not rewritten"
+  notice; retention and content-capture toggles, storage usage, last purge.
+- **REQ / design**: REQ-039.f, 173
+- **Depends on**: P6-10.1
+- **Done**: view-model tests (preview, invalid rule message); compile test.
+- [ ]
+
+### P6-11.1 · Standalone app and build module
+- **What**: `app/standalone.py` `standalone_app()` from the exported pages + navigation shell +
+  standalone auth (login page, `app.auth`); `_webapp/` build module and rxconfig template
+  (`telemetry_enabled=False`, no sitemap, explicit plugins).
+- **REQ / design**: REQ-192, 224, DD-002
+- **Depends on**: P6-03.2, P6-04.2, P6-05.2, P6-08.1, P6-09.1, P6-10.3
+- **Done**: compile test of the standalone app; rxconfig test (telemetry off, sitemap off).
+- [ ]
+
+### P6-11.2 · `serve` wiring and CSP
+- **What**: `serve` hosts the Reflex app next to the P5 routes on the embedded server: workdir
+  preparation (copy, port rewrite, precompressed siblings), environment set before importing
+  Reflex, CSP middleware with hashes from the shipped HTML and `connect-src` from
+  `server.public_url`, CORS pinned (P5-04.2). Without a built frontend, `serve` explains how to
+  build it (dev) instead of failing obscurely.
+- **REQ / design**: REQ-193, 200.b, DD-002 (consequences 1, 4, 5), DD-018
+- **Depends on**: P6-11.1, P5-04.2
+- **Done**: integration test of workdir preparation and port rewrite; CSP header test (no
+  `unsafe-eval`, no third-party origin); `serve` with a built frontend answers `/` 200.
+- [ ]
+
+### P6-12.1 · Smoke suite
+- **What**: `tests/smoke/` (Playwright, CI job `smoke`): standalone app; a minimal host app with
+  colliding state names and routes; XSS fixture (no execution, no remote request); outbound
+  request interception; CSP header; no console errors.
+- **REQ / design**: REQ-190.d, 193.a, 324, 327, 363
+- **Depends on**: P6-11.2
+- **Done**: `smoke` job green in CI.
+- [ ]
+
+### P6-13.1 · Upstream silverpoint issues
+- **What**: draft the four DD-017 issues (N-series line chart, quantile box plot, time-scale
+  axis, trace waterfall) in `docs/upstream-issues.md`; filing them on GitHub is the
+  maintainer's call (outward-facing).
+- **REQ / design**: PRD §4.1 goal, DD-017
+- **Depends on**: P6-09.1
+- **Done**: drafts committed and linked from the docs.
+- [ ]
+
+**Suggested batches:** (1) P6-01.1, P6-01.2, P6-02.1, P6-03.1, P6-03.2 · (2) P6-04.1, P6-04.2,
+P6-05.1, P6-05.2 · (3) P6-06.1, P6-06.2, P6-07.1, P6-07.2 · (4) P6-08.1, P6-09.1 · (5) P6-10.1,
+P6-10.2, P6-10.3 · (6) P6-11.1, P6-11.2 · (7) P6-12.1, P6-13.1.
+
+---
+
+## Phases P7–P10 — to be detailed at phase start
 
 Each phase gets its atomic tasks in a new revision of this file when the previous phase's Done
 criteria are met. The plan tasks, their scope, estimates and dependencies are fixed in the
@@ -1263,7 +1505,6 @@ criteria are met. The plan tasks, their scope, estimates and dependencies are fi
 
 | Phase | Plan tasks | Detailed when | Prerequisite inputs |
 |---|---|---|---|
-| P6 UI | P6-01 … P6-13 | P4-02 done | S1 decisions (P0-06.1) |
 | P7 Delivery | P7-01 … P7-06 | P6-11 done | PyPI trusted publisher, GHCR |
 | P8 Recipes/bench | P8-01 … P8-06 | P3 done | Reference machine (P8-06) |
 | P9 Docs/site | P9-01 … P9-06 | P6-11 done | Q-T1 (P9-05 only) |
@@ -1488,3 +1729,4 @@ parallel, on the S2 branch).
 | 1.2 | 2026-10-31 | Ernesto Crespo (with Claude) | Phase P3 detailed: 25 atomic tasks in 8 batches; store additions `write_group` / `get_or_create_secret` owned by P3-06.1; Delta `changes/2026-10-p3-ingest-prep/` (A-04, A-07, A-08, A-17) folded into API v1.3, Tech Design v1.4, Data Model v1.2 |
 | 1.3 | 2026-10-31 | Ernesto Crespo (with Claude) | Phase P4 detailed: 11 atomic tasks in 4 batches; Delta `changes/2026-10-p4-query-prep/` (A-05 DTO reference, A-10 kind mapping) folded into API v1.4, Data Model v1.3 |
 | 1.4 | 2026-11-01 | Ernesto Crespo (with Claude) | Phase P5 detailed: 12 atomic tasks in 4 batches; Granian embedded server, startup order and exit-code mapping as design notes; store addition `count_purgeable` owned by P5-03.2; span re-deriver for `rebuild` (P5-03.3) |
+| 1.5 | 2026-11-01 | Ernesto Crespo (with Claude) | Phase P6 detailed: 22 atomic tasks in 7 batches; view-model split for testability; Analyze A-12 resolved (Delta `changes/2026-11-p6-ui-prep/`: page loads always call the auth hook, events may reuse it ≤ 30 s per client token); upstream issues drafted, filing left to the maintainer |

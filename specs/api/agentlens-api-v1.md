@@ -6,7 +6,7 @@
 |---|---|
 | **Author** | Ernesto Crespo (`ecrespo`) |
 | **Status** | `APPROVED` |
-| **API version** | v1.4.3 (ships with package 0.1.0) |
+| **API version** | v1.4.4 (ships with package 0.1.0) |
 | **Date** | 2026-10-30 |
 | **Related PRD** | [`specs/prd/agentlens-v0.1.md`](../prd/agentlens-v0.1.md) v1.1 |
 | **Governed by** | [`specs/constitution.md`](../constitution.md) v1.0 |
@@ -1048,8 +1048,9 @@ agentlens.mount(app, auth=my_auth, login_route="/login", prefix="/agentlens")
 
 **Namespacing** [REQ-190.d]: every agentlens Reflex state class subclasses a single base
 `AgentlensState(rx.State)` whose name is prefixed `agentlens_`. Components set no global CSS
-outside a `.agentlens` root class. All event handlers call the auth hook (cached per client
-token for 30 s) before touching data.
+outside a `.agentlens` root class. Every page `on_load` calls the auth hook (never cached). Every
+other event handler calls it before touching data; its result may be reused for at most 30 s for
+the same client token, and is never shared across client tokens [REQ-191.a].
 
 ### 7.3 Standalone auth hooks (built in)
 
@@ -1256,3 +1257,4 @@ When stdout is not a TTY, the key line is replaced by
 | 1.4.1 | 2026-10-31 | P4 implementation notes: `get_graph(full=)` for REQ-153.d's full view; `storage_status` is limited to full-scope viewers; `metric_tokens` groups are `model/token type` |
 | 1.4.2 | 2026-11-01 | P4 implementation notes: store `get_pricing_version(version)` backs `get_pricing(viewer, version)` (REQ-171.a); `subscribe` yields an async generator |
 | 1.4.3 | 2026-11-01 | P5 implementation notes: store `count_purgeable(now_ns)` for `purge --dry-run`; `demo` exits 2 until the sample dataset ships (P8-02) |
+| 1.4.4 | 2026-11-01 | Analyze A-12: §7.2 auth-hook caching applies to events only; page loads always call the hook (Delta `changes/2026-11-p6-ui-prep/`) |

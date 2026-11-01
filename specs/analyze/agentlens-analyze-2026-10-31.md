@@ -101,4 +101,5 @@ The Analyze presents findings only; approval is the maintainer's.
 | A-17 | API v1.3 §3.6 `future_timestamp` (`ingest.max_clock_skew`, default 1 h) and `older_than_retention` |
 | A-05 (DTO fields) | API v1.4 §6.7 DTO reference (every field; `RunSummary.usage_source`); Delta `changes/2026-10-p4-query-prep/` |
 | A-10 | API v1.4 §6.8 kind mapping (`generic_genai` → `generic` + `is_genai`, `workflow` → `agent`, approval override) |
+| A-12 | PRD v1.2 REQ-191.a and API v1.4.4 §7.2: page loads always call the auth hook; events may reuse its result ≤ 30 s per client token; Delta `changes/2026-11-p6-ui-prep/` |
 
