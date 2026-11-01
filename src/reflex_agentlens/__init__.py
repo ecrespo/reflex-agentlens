@@ -1,7 +1,7 @@
 """reflex-agentlens: self-hosted observability for AI agents, built with Reflex.
 
 Public API (API §7.1, semver-stable from 0.1.0): ``mount``, ``configure``, ``AgentlensConfig``,
-``Viewer``, ``AuthHook``, ``pages`` (``standalone_app`` arrives with P6-11). Every symbol is
+``Viewer``, ``AuthHook``, ``pages``, ``standalone_app``. Every symbol is
 resolved lazily, so ``import reflex_agentlens`` imports neither Reflex nor the storage layer and
 performs no I/O (REQ-190.c).
 """
@@ -21,11 +21,13 @@ __all__ = [
     "configure",
     "mount",
     "pages",
+    "standalone_app",
 ]
 
 if TYPE_CHECKING:
     from reflex_agentlens import pages
     from reflex_agentlens.app.mount import mount
+    from reflex_agentlens.app.standalone import standalone_app
     from reflex_agentlens.core.config import AgentlensConfig
     from reflex_agentlens.query.dto import Viewer
     from reflex_agentlens.views.registry import AuthHook, configure
@@ -37,6 +39,7 @@ _LAZY: dict[str, tuple[str, str | None]] = {
     "AgentlensConfig": ("reflex_agentlens.core.config", "AgentlensConfig"),
     "Viewer": ("reflex_agentlens.query.dto", "Viewer"),
     "pages": ("reflex_agentlens.pages", None),
+    "standalone_app": ("reflex_agentlens.app.standalone", "standalone_app"),
 }
 
 
