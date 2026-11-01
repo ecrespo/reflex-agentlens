@@ -35,7 +35,7 @@ __all__ = [
 
 TIMEOUT_S = 0.025  # per rule per value (API §3.5)
 MAX_PATTERN_RULES, MAX_FIELD_RULES, MAX_REGEX_BYTES, MAX_GLOB_CHARS = 50, 100, 2048, 256
-_SAMPLE = ("a" * 64 + "@" + "a." * 32 + "1-" * 64) * 128  # ~64 KiB of near-miss text
+_SAMPLE = ("a" * 64 + "@" + "a." * 32 + "1-" * 64) * 256  # 65,792 chars of near-miss text
 
 
 @dataclass(frozen=True, slots=True)
