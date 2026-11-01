@@ -4,7 +4,7 @@ dynamic = ["version"]
 description = "Self-hosted observability for AI agents, built with Reflex: OpenTelemetry GenAI traces, run timelines, graph replay, token and cost analytics."
 readme = "README.md"
 license = "MIT"
-license-files = ["LICENSE"]
+license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "Ernesto Crespo" }]
 requires-python = ">=3.11"
 classifiers = [
