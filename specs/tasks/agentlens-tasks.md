@@ -1,10 +1,10 @@
 # Tasks — reflex-agentlens v0.1
 
 > Source specs: [Constitution](../constitution.md) v1.2 · [PRD](../prd/agentlens-v0.1.md) v1.1 ·
-> [API Spec](../api/agentlens-api-v1.md) v1.3 · [Tech Design](../technical/agentlens-architecture.md) v1.4 ·
-> [Data Model](../data-model/agentlens-schema.md) v1.2 · [Implementation Plan](../plans/agentlens-phase-1.md) v1.0
-> Plan phases detailed in this revision: **P0 (spikes), P1 (foundation and `core`), P2 (store) and P3 (ingest)** · Generated: 2026-10-31
-> Status: `APPROVED` (P3 detailing adopted under the standing authorization of 2026-10-31) · Version 1.2
+> [API Spec](../api/agentlens-api-v1.md) v1.4 · [Tech Design](../technical/agentlens-architecture.md) v1.4 ·
+> [Data Model](../data-model/agentlens-schema.md) v1.3 · [Implementation Plan](../plans/agentlens-phase-1.md) v1.0
+> Plan phases detailed in this revision: **P0 (spikes), P1 (foundation and `core`), P2 (store), P3 (ingest) and P4 (query)** · Generated: 2026-10-31
+> Status: `APPROVED` (P3 and P4 detailing adopted under the standing authorization of 2026-10-31) · Version 1.3
 
 ## How this file works
 
@@ -915,7 +915,149 @@ P3-13.2.
 
 ---
 
-## Phases P4–P10 — to be detailed at phase start
+## Phase P4 — Query
+
+Detailed 2026-10-31 after P3. Inputs: API v1.4 §6 (Delta Spec `changes/2026-10-p4-query-prep/`,
+closing Analyze A-05 and A-10), Data Model v1.3 §8, Tech Design v1.4 DD-011/DD-012. Code lives
+under `src/reflex_agentlens/query/`; tests under `tests/unit/query/` (pure functions) and
+`tests/contract/query/` (services on both backends through the `db` fixture). `query` imports
+`store` and `core`, never `ingest` except `ingest.redaction.preview`, and never `reflex` (import
+contracts). Failing test first or in the same commit (Art. 8). Branches: `feat/P4-<nn>-<slug>`
+from `develop`.
+
+**Design notes.**
+- Every `QueryService` / `AdminService` method takes a `Viewer` and checks scope **first**
+  (`query.scope`): an explicit Project outside `allowed_project_ids` → `Forbidden`; an empty
+  selection → every allowed Project. Admin methods check `viewer.is_admin` before anything else.
+- DTOs are built from `store.records` only in `query.convert`; money goes through
+  `core.money.nusd_to_usd`; IDs through `core.ids`.
+- No storage protocol changes are planned in P4. If one is needed, it gets a contract test on both
+  backends in the same task.
+
+### P4-01.1 · DTOs and conversions
+- **What**: `query/dto.py`: every model of API §6.7 (frozen, `extra="forbid"`), `Viewer`.
+  `query/convert.py`: `store.records` → DTOs (hex IDs, `Decimal` money, Source labels, priced sum +
+  `includes_unpriced`). `query/kinds.py`: the §6.8 table and the REQ-150.a label rules.
+- **REQ / design**: REQ-100.b, 103.a, 104.a, 105, 106, 152.a, API §6.7–6.8, Art. 5
+- **Depends on**: P2-07
+- **Done**: round-trip tests per conversion (money exact, unpriced → `None`/flag, multi-Source,
+  `usage_source`); every §6.8 row has a table-driven test; DTOs reject unknown fields and are
+  JSON-serializable with money as strings.
+- [ ]
+
+### P4-01.2 · Time expressions, `RunFilter` and the Runs URL grammar
+- **What**: `query/timeexpr.py` (`now`, `now-<n><unit>`, RFC 3339). `query/filters.py`:
+  `RunFilter`, `parse_runs_query(params) -> (RunFilter, RunSort, cursor)` and
+  `runs_query_string(...)` (canonical order) for every §6.2 row; ranges `a..b`, `..b`, `a..`;
+  `attr=scope:key[=value]`. `query/scope.py`: Viewer scope resolution (slugs or IDs → IDs,
+  `Forbidden`), Source labels → `SourceKey`, `RunFilter` → `store.records.RunQuery`.
+- **REQ / design**: REQ-101.a–i, 102.b, 325.a, 191.c, API §6.2
+- **Depends on**: P4-01.1
+- **Done**: parse ∘ serialize is the identity (property test); one malformed case per parameter
+  raises `ValidationError` naming it; nothing returns an unfiltered query on error.
+- [ ]
+
+### P4-01.3 · Signed keyset cursors
+- **What**: `query/cursor.py`: encode/decode Run and Session cursors with `core.security.sign`
+  (purpose `cursor`), carrying the sort; key passed to the service.
+- **REQ / design**: REQ-100.a, 105.a, API §6.2
+- **Depends on**: P4-01.1
+- **Done**: tampered, truncated, foreign-key and other-sort cursors raise
+  `ValidationError("cursor")`; a cursor round-trips.
+- [ ]
+
+### P4-02.1 · `QueryService`: runs, LLM calls, selectors
+- **What**: `query/service.py` `QueryService(store, cfg, cursor_key)`: `list_runs`,
+  `resolve_trace` (optional slug), `list_llm_calls` (messages via `core.semconv.messages`, roles
+  mapped per §6.7), `facets`, `list_projects`, `list_sources`, `get_project`.
+- **REQ / design**: REQ-100, 101, 103 (resolve), 104, 130.a, 145.b, 191.c
+- **Depends on**: P4-01.2, P4-01.3
+- **Done**: contract tests on both backends: pagination walks every Run once in each sort; a
+  viewer limited to one Project never sees another's Runs, facets or Sources; LLM-call messages
+  equal the golden normalizer output.
+- [ ]
+
+### P4-02.2 · Trace tree and span drawer
+- **What**: `query/tree.py`: DFS order with siblings by start, missing-parent placeholders,
+  depth, subtree tokens/cost, labels and kinds (§6.8), paging by `offset`/`limit ≤ 2000`.
+  `get_trace`, `get_span_raw`, `get_span_detail` (LLM messages, tool arguments/result via the
+  mapping table, `ErrorInfo` from status and `exception` events).
+- **REQ / design**: REQ-103.a/b, 037.b, 151.a–e, 152.a, 150.a (labels), A-10
+- **Depends on**: P4-02.1
+- **Done**: shuffled-arrival trees equal the in-order tree; orphans sit under one placeholder per
+  missing parent; subtree totals equal the sum of LLM calls below; a purged or foreign trace
+  raises `NotFound`.
+- [ ]
+
+### P4-02.3 · Sessions
+- **What**: `list_sessions` (filter, sort, signed cursor) and `get_session` (chronological Runs
+  with cumulative tokens/cost and the unpriced flag).
+- **REQ / design**: REQ-105.a/b, 160.a (data)
+- **Depends on**: P4-02.1
+- **Done**: contract tests on both backends for every sort and the cumulative columns.
+- [ ]
+
+### P4-03.1 · Dashboard aggregates and storage status
+- **What**: `dashboard(viewer, scope)`: every REQ-106 aggregate plus REQ-107 metric tokens,
+  fetched concurrently (`asyncio.gather`), per-panel failures listed in `failed` (REQ-130.d);
+  `storage_status`.
+- **REQ / design**: REQ-106, 107, 061.c, 130.d, 141 (data), 173.a/b
+- **Depends on**: P4-02.1
+- **Done**: values equal the store aggregates on both backends; one failing aggregate leaves the
+  others filled; `includes_unpriced` set wherever an unpriced call contributes.
+- [ ]
+
+### P4-04.1 · `query.graph`
+- **What**: `query/graph.py`: `AgentGraph` from the trace spans (graph nodes; nearest graph
+  ancestor parent edges; sibling sequence edges by start; execution counts; error and interrupted
+  flags; §6.8 kinds), collapse above 150 node executions, tool/LLM sequence fallback. Wired into
+  `get_trace` for GenAI Runs.
+- **REQ / design**: REQ-153.a–e (data), DD-011, A-10
+- **Depends on**: P4-02.2
+- **Done**: fixtures for LangGraph retries, nested agents, approvals inside a node, > 150
+  executions and a Run without graph nodes.
+- [ ]
+
+### P4-05.1 · `AdminService`: Projects, API keys, saved filters
+- **What**: `query/admin.py` `AdminService(store, cfg, feed?)`: admin gating; `create_project`
+  (defaults from config), `update_project_settings`, `delete_project` (name confirmation),
+  `list_projects_admin`; `create_api_key` (`core.security`, plaintext once, OTLP snippet),
+  `list_api_keys`, `revoke_api_key`; `list_saved_filters` / `save_filter` (canonical query) /
+  `delete_filter` for any viewer with Project access.
+- **REQ / design**: REQ-170.a–d, 173.a, 174, 102.a, 191.c, 006.c
+- **Depends on**: P4-01.2
+- **Done**: non-admin → `Forbidden` for every admin method; slug conflicts → `Conflict`; the
+  plaintext appears only in `CreatedApiKey`; revocation reaches the auth cache via the change feed.
+- [ ]
+
+### P4-05.2 · `AdminService`: pricing, redaction, recompute
+- **What**: `get_pricing`, `list_pricing_versions`, `save_pricing` (non-negative decimals, glob
+  syntax), `list_unpriced_models`, CSV export/import (SHOULD); `get_redaction_rules`,
+  `save_redaction_rules` (compile + adversarial timing via the preview module),
+  `preview_redaction` (nothing persisted or logged); `recompute_costs` (SHOULD).
+- **REQ / design**: REQ-060.c, 062, 171.a–c, 172.a/b, 039.d/f
+- **Depends on**: P4-05.1
+- **Done**: CSV round-trip; an invalid or catastrophic regex is refused with the rule name;
+  preview logs nothing (caplog); recompute updates only the given range.
+- [ ]
+
+### P4-06.1 · `subscribe`, demo mode, phase gate
+- **What**: `QueryService.subscribe` (allowed-Project filter, coalescing to ≤ 1 notice per
+  `min_interval`, ≤ 200 run keys + `truncated`); demo-mode guard on every `AdminService` mutation
+  and `save_filter` / `delete_filter` → `Forbidden("demo mode")`. P4 gate.
+- **REQ / design**: REQ-140.a/b, 231.b, API §6.4–6.5
+- **Depends on**: P4-02.1, P4-05.1
+- **Done**: burst of 1,000 events yields ≤ 1 notice per interval with the union of keys; a viewer
+  never receives another Project's keys; plan P4 Done: `query` coverage ≥ 85 %, `mypy --strict`
+  clean, import contracts kept, contract suite green on both backends.
+- [ ]
+
+**Suggested batches:** (1) P4-01.1, P4-01.2, P4-01.3 · (2) P4-02.1, P4-02.2, P4-02.3 ·
+(3) P4-03.1, P4-04.1 · (4) P4-05.1, P4-05.2, P4-06.1.
+
+---
+
+## Phases P5–P10 — to be detailed at phase start
 
 Each phase gets its atomic tasks in a new revision of this file when the previous phase's Done
 criteria are met. The plan tasks, their scope, estimates and dependencies are fixed in the
@@ -923,7 +1065,6 @@ criteria are met. The plan tasks, their scope, estimates and dependencies are fi
 
 | Phase | Plan tasks | Detailed when | Prerequisite inputs |
 |---|---|---|---|
-| P4 Query | P4-01 … P4-06 | P2-07 done | — |
 | P5 Runtime/CLI | P5-01 … P5-08 | P3-09 done | — |
 | P6 UI | P6-01 … P6-13 | P4-02 done | S1 decisions (P0-06.1) |
 | P7 Delivery | P7-01 … P7-06 | P6-11 done | PyPI trusted publisher, GHCR |
@@ -1140,3 +1281,4 @@ parallel, on the S2 branch).
 | 1.0.1 | 2026-10-31 | Ernesto Crespo (with Claude) | Analyze fixes: A-03 (`percentile_disc` in P0-09.2), A-13 (removed [P] from P0-05.1/05.2, P1-02.1/02.2/02.3: shared files), A-15 (new P0-09.3), A-16 (new P0-05.3) |
 | 1.1 | 2026-10-31 | Ernesto Crespo (with Claude) | Phase P2 detailed: 21 atomic tasks, protocol-method ownership table (A-06), protocol return types as `store.records` (A-05, storage side), A-01 multi-writer test (P2-06.2), no pricing seed in `0001_initial` (A-11) |
 | 1.2 | 2026-10-31 | Ernesto Crespo (with Claude) | Phase P3 detailed: 25 atomic tasks in 8 batches; store additions `write_group` / `get_or_create_secret` owned by P3-06.1; Delta `changes/2026-10-p3-ingest-prep/` (A-04, A-07, A-08, A-17) folded into API v1.3, Tech Design v1.4, Data Model v1.2 |
+| 1.3 | 2026-10-31 | Ernesto Crespo (with Claude) | Phase P4 detailed: 11 atomic tasks in 4 batches; Delta `changes/2026-10-p4-query-prep/` (A-05 DTO reference, A-10 kind mapping) folded into API v1.4, Data Model v1.3 |
