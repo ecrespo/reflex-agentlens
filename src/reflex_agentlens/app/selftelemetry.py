@@ -150,9 +150,18 @@ class OtelRecorder(telemetry.Recorder):
         if keys is None:
             yield
             return
-        with self.tracer.start_as_current_span(name, record_exception=False) as span:
+        from opentelemetry.trace import Status, StatusCode
+
+        # Never let the SDK copy an exception message into the span: messages can carry user
+        # input (REQ-323.a). The status names the exception type only.
+        with self.tracer.start_as_current_span(
+            name, record_exception=False, set_status_on_exception=False
+        ) as span:
             try:
                 yield
+            except BaseException as exc:
+                span.set_status(Status(StatusCode.ERROR, type(exc).__name__))
+                raise
             finally:
                 for key, value in _clean(keys, attributes).items():
                     span.set_attribute(key, value)

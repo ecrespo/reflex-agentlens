@@ -142,3 +142,12 @@ def test_undeclared_labels_never_leak(captured: Captured) -> None:
     (span,) = captured.spans.get_finished_spans()
     assert dict(span.attributes or {}) == {"query": "other"}
     assert CANARY not in captured.dump()
+
+
+def test_exception_messages_never_reach_a_span_req_323a(captured: Captured) -> None:
+    with pytest.raises(ValueError, match=CANARY), captured.recorder.span("agentlens.query"):
+        raise ValueError(f"bad input {CANARY}")
+    (span,) = captured.spans.get_finished_spans()
+    assert span.status.description == "ValueError"
+    assert not span.events  # no recorded exception event
+    assert CANARY not in captured.dump()
