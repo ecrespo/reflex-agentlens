@@ -790,7 +790,7 @@ first or in the same commit (Art. 8). Branches: `feat/P3-<nn>-<slug>` from `deve
 - **Depends on**: P2-10.1
 - **Done**: contract test: a group where one batch's Project is deleted mid-flight commits the
   others and rejects that one; two backends on one PG database get the same secret.
-- [ ]
+- [x] 2026-10-31 · PR #22
 
 ### P3-06.2 · `ingest.writer` and `WriteQueue`
 - **What**: bounded queue by bytes (default 256 MiB), linger ≤ 50 ms / ≤ 5,000 spans, futures
@@ -800,7 +800,7 @@ first or in the same commit (Art. 8). Branches: `feat/P3-<nn>-<slug>` from `deve
 - **Depends on**: P3-06.1
 - **Done**: no future resolves before its commit; queue full → immediate rejection; DB outage →
   `StorageUnavailable`, then automatic recovery.
-- [ ]
+- [x] 2026-10-31 · PR #22
 
 ### P3-07.1 · `ingest.engine`: thread, loop, supervisor
 - **What**: dedicated thread with its own loop, `submit()` from other loops
@@ -810,7 +810,7 @@ first or in the same commit (Art. 8). Branches: `feat/P3-<nn>-<slug>` from `deve
 - **Depends on**: P3-06.2
 - **Done**: submit from the main loop resolves after commit; a crash restarts with backoff and
   stops after 5 in 10 min; stop drains the queue.
-- [ ]
+- [x] 2026-10-31 · PR #22
 
 ### P3-07.2 · Engine jobs and settings cache
 - **What**: `ingest/jobs.py`: finalizer every minute (Q12), purge schedule under `job_lock`,
@@ -1101,6 +1101,7 @@ the matrix). No requirement is deferred at this point.
 | 2026-10-31 | (fix) | Done | PR #19; Delta `changes/2026-10-saved-filter-scope/` → API v1.3.1: `delete_filter(project_id, filter_id)` (IDOR from a security review) |
 | 2026-10-31 | P3-03.1, 03.2, 04.2 | Done | PR #20; LLMCall/agent usage, ToolCall, Approval (vocabulary + PydanticAI deferral); hook (deep-copied view, validated result, class-only errors), content drop (`dropped_keys` incl. `event:<name>`), preview. **Deferred**: MCP elicitation (COULD): no attribute carries the user's answer |
 | 2026-10-31 | P3-03.3, 05.1, 05.2 | Done | PR #21; graph nodes (kind decided from attributes: LangGraph/OI chain nodes are `node`), Session key (A-08 HMAC), search document, `normalize_batch` in `normalize/pipeline.py` (lazy re-export: import cycle with the redaction engine); bundled pricing from litellm@187f936cb345 (651 entries, MIT checked, `NOTICE`), bootstrap, cost at the version in effect at call start. **Not done**: agent handoffs (`gen_ai.transfer.target.name`) are not derived into `explicit_parent_key` |
+| 2026-10-31 | P3-06.1, 06.2, 07.1 | Done | PR #22; `write_group` with per-batch savepoints (SQLSTATE class 22/23 → `BatchRejected`, PG retries the group once on deadlock/serialization), `get_or_create_secret`; writer with a byte-bounded queue, linger/span-cap grouping, commit-latency p50; a failed group is an outage only if `ping()` also fails, otherwise batches are retried one by one and only the failing one becomes `BatchRejected(invalid_data)` (security review: no cross-tenant failure); engine thread + loop, `submit` via `run_coroutine_threadsafe`, drain on stop, supervisor (5 restarts / 10 min then down). Added `[ingest] max_clock_skew` (API §8.2, A-17). **Found**: `tests/unit/store/test_sqlite_backend.py::test_open_is_idempotent_and_never_migrates` leaks a sqlite3 connection (fails only under `-W error`, pre-existing on develop) |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).
