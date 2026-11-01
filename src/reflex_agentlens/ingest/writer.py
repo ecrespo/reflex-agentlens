@@ -95,7 +95,7 @@ class WriteQueue:
             raise StorageUnavailable("storage unavailable; retry later")
         need = max(1, batch_bytes(batch) if size is None else size)  # ≥ 1: drained ⇔ 0 bytes
         if self.pending_bytes + need > self.budget_bytes:
-            raise Overloaded("write queue full")
+            raise Overloaded()  # fixed client message (API §3.3)
         future: asyncio.Future[BatchOutcome] = asyncio.get_running_loop().create_future()
         self._items.append(_Item(batch, need, future))
         self.pending_bytes += need
