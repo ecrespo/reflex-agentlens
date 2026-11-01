@@ -99,4 +99,6 @@ The Analyze presents findings only; approval is the maintainer's.
 | A-07 | Tech Design v1.4 Flow 1: redaction before truncation; canary test in P3 |
 | A-08 | Data Model v1.2 §2.1 `session_key`, §2.8 HMAC-suffixed natural key when redaction changes a conversation ID; API v1.3 `get_or_create_secret` |
 | A-17 | API v1.3 §3.6 `future_timestamp` (`ingest.max_clock_skew`, default 1 h) and `older_than_retention` |
+| A-05 (DTO fields) | API v1.4 §6.7 DTO reference (every field; `RunSummary.usage_source`); Delta `changes/2026-10-p4-query-prep/` |
+| A-10 | API v1.4 §6.8 kind mapping (`generic_genai` → `generic` + `is_genai`, `workflow` → `agent`, approval override) |
 

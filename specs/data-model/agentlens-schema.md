@@ -6,7 +6,7 @@
 |---|---|
 | **Author** | Ernesto Crespo (`ecrespo`) |
 | **Status** | `APPROVED` |
-| **Version** | 1.2 |
+| **Version** | 1.3 |
 | **Date** | 2026-10-31 |
 | **Databases** | SQLite ≥ 3.43 (FTS5, JSON1, window functions, contentless-delete FTS) · PostgreSQL ≥ 15 (CI: 15, 18) |
 | **Related Tech Design** | [`specs/technical/agentlens-architecture.md`](../technical/agentlens-architecture.md) v1.0 |
@@ -960,6 +960,8 @@ this explicitly for compliance.
 | `PricingTable` | `pricing_versions`, `pricing_entries` | `*_nusd_per_mtok` → `Decimal` USD per Mtok |
 | `ApiKeyView` | `api_keys` | `al_<key_id>_…` prefix display only |
 
+Field-level DTO definitions live in API §6.7; kind mapping in API §6.8.
+
 **Money note (Constitution Art. 5):** the article requires `Decimal` in Python and fixed-precision
 `NUMERIC` in SQL, never float. This model uses **fixed-point integers (`BIGINT` nano-USD)** on
 both backends. SQLite has no exact `NUMERIC` storage (its NUMERIC affinity coerces to REAL), so
@@ -1012,3 +1014,4 @@ integers).
 | 1.0.1 | 2026-10-31 | Ernesto Crespo (with Claude) | From spike S2: percentile rank computed in double precision (parity), one-sort multi-percentile form; search document normalized before indexing (DD-006) |
 | 1.1 | 2026-10-31 | Ernesto Crespo (with Claude) | Analyze A-01: Q6 Run stubs via `ON CONFLICT DO UPDATE … RETURNING` in sorted order (row locks), Session locks before recompute, finalizer `FOR UPDATE SKIP LOCKED`. A-11: pricing seed moved from `0001_initial` to first-run bootstrap. A-09: §2.19 not adopted |
 | 1.2 | 2026-10-31 | Ernesto Crespo (with Claude) | Delta `changes/2026-10-p3-ingest-prep/`: `app_meta.session_key` and the post-redaction Session natural key (A-08) |
+| 1.3 | 2026-10-31 | Ernesto Crespo (with Claude) | Delta `changes/2026-10-p4-query-prep/`: §8 points to API §6.7 for DTO fields (A-05) |

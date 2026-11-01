@@ -6,7 +6,7 @@
 |---|---|
 | **Author** | Ernesto Crespo (`ecrespo`) |
 | **Status** | `APPROVED` |
-| **API version** | v1.3.1 (ships with package 0.1.0) |
+| **API version** | v1.4 (ships with package 0.1.0) |
 | **Date** | 2026-10-30 |
 | **Related PRD** | [`specs/prd/agentlens-v0.1.md`](../prd/agentlens-v0.1.md) v1.1 |
 | **Governed by** | [`specs/constitution.md`](../constitution.md) v1.0 |
@@ -436,18 +436,20 @@ DTOs are frozen Pydantic v2 models (JSON-serializable, Reflex-state friendly). M
 |---|---|---|
 | `list_runs(viewer, filter: RunFilter, sort: RunSort = START_DESC, cursor: str \| None = None, limit: int = 50)` | `Page[RunSummary]` | 100, 101 |
 | `resolve_trace(viewer, trace_id, project_slug: str \| None = None)` | `list[RunRef]` (0 = not found, >1 = disambiguation) | 103 |
-| `get_trace(viewer, run: RunRef)` | `TraceDetail` (raises `NotFound`) | 103 |
+| `get_trace(viewer, run: RunRef, offset: int = 0, limit: int = 2000)` | `TraceDetail` (raises `NotFound`); one page of the DFS order, totals cover the whole trace | 103 |
 | `list_llm_calls(viewer, run: RunRef)` | `list[LLMCallView]`, the stable normalized I/O shape | 104 |
 | `get_span_raw(viewer, run: RunRef, span_id: str)` | `SpanRaw` (raises `NotFound`), loaded lazily by the span drawer's raw tab | 151.e |
+| `get_span_detail(viewer, run: RunRef, span_id: str)` | `SpanDetail` (raises `NotFound`): the span drawer's single lazy call (messages, tool I/O, error, raw) | 151.a–e |
 | `list_sessions(viewer, filter: SessionFilter, sort: SessionSort, cursor, limit)` | `Page[SessionSummary]` | 105.a |
 | `get_session(viewer, session_id)` | `SessionDetail` | 105.b |
 | `dashboard(viewer, scope: AggScope)` | `DashboardData` (all REQ-106 aggregates, fetched concurrently) | 106, 141 |
 | `facets(viewer, field: FacetField, scope: AggScope, limit=100)` | `list[str]` (models, tools, statuses, sources) | 145.b |
-| `list_projects(viewer)` / `list_sources(viewer, project_ids)` | selectors | 130.a |
+| `list_projects(viewer)` / `list_sources(viewer, project_ids)` | `list[ProjectRef]` / `list[SourceView]`, limited to allowed Projects | 130.a |
+| `get_project(viewer, project_id)` | `Project` (raises `NotFound`) | 173.a |
 | `subscribe(viewer, project_ids, min_interval: float = 1.0)` | `AsyncIterator[ChangeNotice]` (coalesced) | 140 |
 | `storage_status(viewer)` | `StorageStatus` (usage, size limit, last purge) | 173 |
 
-**Key DTOs** (field-level types in the Data Model):
+**Key DTOs** (summary; field-level definitions are in §6.7, kind mapping in §6.8):
 
 ```python
 class RunSummary(BaseModel):            # [REQ-100.b]
@@ -516,7 +518,7 @@ rendering code.
 ```python
 class RunFilter(BaseModel):
     project_ids: list[str] = []          # empty = all allowed
-    source_ids: list[str] = []
+    sources: list[str] = []              # Source labels ("name" or "ns/name"), §6.7
     time_from: TimeExpr | None = None    # RFC 3339 or relative ("now-24h")
     time_to: TimeExpr | None = None
     statuses: list[RunStatus] = []
@@ -537,8 +539,8 @@ where it is plural:
 
 | Param | Example | Maps to |
 |---|---|---|
-| `project` | `project=billing-bot` (slug) | `project_ids` |
-| `source` | `source=planner-svc` (service.name; `ns/name` if namespaced) | `source_ids` |
+| `project` | `project=billing-bot` (slug or Project ID) | `project_ids` |
+| `source` | `source=planner-svc` (service.name; `ns/name` if namespaced) | `sources` |
 | `from`, `to` | `from=now-24h`, `to=2026-10-30T12:00:00Z` | time range |
 | `status` | `status=error&status=incomplete` | `statuses` |
 | `genai` | `genai=1` / `genai=0` | `is_genai` |
@@ -555,13 +557,15 @@ where it is plural:
 Malformed parameters raise `ValidationError(field=...)`. The page shows the error and **never**
 an unfiltered list [REQ-101.i].
 
-Cursor = base64url of (sort key value, `trace_id`, `project_id`), signed with the session secret so
-it cannot be forged. Cursors are not stable across `sort` changes.
+Cursor = base64url of (sort, sort key value, `trace_id`, `project_id`) plus an HMAC-SHA256 tag
+under a key passed to `QueryService` (the runtime passes the session secret), so it cannot be
+forged. A cursor of another sort or with a bad tag raises `ValidationError(field="cursor")`.
 
 ### 6.3 `AdminService` (mutations; `viewer.is_admin` required)
 
 | Method | Effect / returns | REQ |
 |---|---|---|
+| `list_projects_admin(viewer)` | `list[Project]` with settings | 170, 173.a |
 | `create_project(viewer, name, slug)` | `Project` with defaults (retention 30 d, `secrets` preset, content on, default limits) | 170.a |
 | `update_project_settings(viewer, project_id, patch: ProjectSettingsPatch)` | retention days, content toggle, rate limits | 173.a, 040 |
 | `delete_project(viewer, project_id, confirm_name: str)` | `ValidationError` if `confirm_name` ≠ name. Cascades | 170.d |
@@ -569,6 +573,7 @@ it cannot be forged. Cursors are not stable across `sort` changes.
 | `list_api_keys(viewer, project_id)` | `list[ApiKeyView]` (prefix, label, created, last used, revoked) | 170 |
 | `revoke_api_key(viewer, key_id)` | revokes. Publishes `settings_changed` | 170.c, 006.c |
 | `get_pricing(viewer, version: int \| None = None)` | `PricingTable` | 171.a |
+| `list_pricing_versions(viewer)` | `list[PricingVersionInfo]`, newest first | 171.a |
 | `save_pricing(viewer, entries)` | new `PricingVersion`. Validates non-negative decimals and pattern syntax | 060.c, 171.a |
 | `list_unpriced_models(viewer, project_ids)` | `list[UnpricedModel{provider, model, calls, last_seen_ns}]` | 171.b |
 | `export_pricing_csv(viewer)` / `import_pricing_csv(viewer, csv_text)` | CSV text / new version (SHOULD) | 171.c |
@@ -608,6 +613,360 @@ When the configuration has `demo.enabled = true`, every `AdminService` mutation 
 | `Forbidden(reason)` | not admin, project not allowed, demo mode | "requires admin" / "not authorized" state |
 | `Conflict(entity)` | duplicate slug / filter name | inline error |
 | `StorageUnavailable` | DB unreachable | "storage unavailable" banner [REQ-330] |
+
+### 6.7 DTO reference [Analyze A-05]
+
+Every DTO of §6 with every field. All are frozen Pydantic v2 models (`ConfigDict(frozen=True,
+extra="forbid")`) in `reflex_agentlens.query.dto`, built from `store.records` in `query`. Common
+rules:
+
+- IDs are lowercase hex strings (`trace_id` 32 chars, `span_id` 16 chars); `project_id`,
+  `session_id` are ULID strings (§2).
+- Timestamps and durations are `int` nanoseconds. Money is `Decimal` USD (`nusd / 10**9`), serialized
+  as a string in JSON. Rates (`error_rate`) are `float` in `[0, 1]`; they are never money.
+- "Priced sum + flag": a money total sums the **priced** items and carries
+  `includes_unpriced: bool` (REQ-061.c). A single item's money is `None` when it is unpriced.
+- A Source label is `service.name`, or `service.namespace/service.name` when the namespace is not
+  empty. The same label is used in URLs (`source=`), filters and pickers.
+
+**Inputs**
+
+```python
+class RunRef(BaseModel):                # one Run; the Trace page URL carries both parts
+    project_id: str; trace_id: str
+
+class SourceRef(BaseModel):
+    service_name: str; service_namespace: str = ""
+    label: str                          # computed: "ns/name" or "name"
+
+TimeExpr = str                          # RFC 3339 with offset ("2026-10-30T12:00:00Z") | "now" | "now-<n><s|m|h|d|w>"
+
+class Range[N](BaseModel):              # inclusive; at least one end; min <= max
+    min: N | None = None; max: N | None = None
+
+class AttrPredicate(BaseModel):
+    scope: Literal["root", "resource"] = "root"   # "any" (SHOULD) is not in v0.1
+    key: str                            # ^[A-Za-z0-9_.\-]{1,256}$
+    op: Literal["eq", "exists"] = "eq"
+    value: str | None = None            # required for "eq", forbidden for "exists"
+
+RunSort = Literal["start_desc", "start_asc", "duration_desc", "duration_asc",
+                  "tokens_desc", "tokens_asc", "cost_desc", "cost_asc"]
+SessionSort = Literal["last_desc", "last_asc", "runs_desc", "runs_asc",
+                      "tokens_desc", "tokens_asc", "cost_desc", "cost_asc"]
+FacetField = Literal["model", "tool", "status", "source", "agent"]
+
+class SessionFilter(BaseModel):         # REQ-105.a
+    project_ids: list[str] = []; sources: list[str] = []
+    time_from: TimeExpr | None = None; time_to: TimeExpr | None = None
+
+class AggScope(BaseModel):              # dashboard and facets
+    project_ids: list[str] = []; sources: list[str] = []
+    time_from: TimeExpr = "now-24h"; time_to: TimeExpr = "now"
+    bucket: Literal["auto", "minute", "hour", "day"] = "auto"   # auto per REQ-106
+
+class Page[T](BaseModel):
+    items: list[T]; next_cursor: str | None
+```
+
+Validation: an unknown status or sort, an unparseable time, number or range, `time_from >
+time_to`, an empty or too-long value, `limit` outside 1–200, or a cursor that fails its signature
+or belongs to another sort raises `ValidationError(field=…)` with the field name of §6.2 (REQ-101.i,
+REQ-325.a). A Project ID or slug outside `viewer.allowed_project_ids` raises `Forbidden`; an empty
+`project_ids` means every allowed Project.
+
+**Runs and traces**
+
+```python
+class RunSummary(BaseModel):            # [REQ-100.b]
+    project_id: str; trace_id: str
+    start_ns: int; end_ns: int | None; duration_ns: int | None; last_span_ns: int
+    status: RunStatus                   # "in_progress" | "ok" | "error" | "incomplete"
+    root_name: str | None; agent_name: str | None
+    source: SourceRef | None; source_count: int          # >1 = multi-Source Run
+    models: list[str]
+    input_tokens: int; output_tokens: int; cached_input_tokens: int; total_tokens: int
+    usage_source: Literal["llm", "agent", "none"]        # DD-012 footnote when "agent"
+    cost_usd: Decimal | None            # None when no LLMCall was priced
+    unpriced: bool                      # at least one LLMCall unpriced
+    llm_calls: int; tool_calls: int; error_spans: int; span_count: int; missing_parents: int
+    session_id: str | None; is_genai: bool
+
+class TokenCostTotals(BaseModel):       # [REQ-152.a]
+    input_tokens: int; output_tokens: int; cached_input_tokens: int; total_tokens: int
+    cost_usd: Decimal; includes_unpriced: bool; unpriced_calls: int
+    usage_source: Literal["llm", "agent", "none"]
+
+class TraceDetail(BaseModel):           # [REQ-103.a]
+    run: RunSummary
+    spans: list[SpanNode]               # one page of the DFS order (offset, limit ≤ 2,000)
+    span_offset: int; next_offset: int | None
+    graph: AgentGraph | None            # None for non-GenAI Runs
+    totals: TokenCostTotals
+    llm_calls: list[LLMCallView]        # every LLMCall of the Run, start order, messages=[] (REQ-152.a table)
+
+class SpanNode(BaseModel):
+    span_id: str; parent_span_id: str | None; depth: int
+    missing_parent: bool                # its parent never arrived
+    placeholder: bool = False           # synthetic node standing for a missing parent
+    name: str; label: str               # GenAI-aware label [REQ-150.a]
+    kind: SpanKind                      # §6.8
+    is_genai: bool                      # GenAI badge (category generic_genai, or any GenAI kind)
+    start_ns: int; end_ns: int; duration_ns: int
+    status: Literal["unset", "ok", "error"]; status_message: str | None
+    source: SourceRef | None; agent_name: str | None
+    llm: LLMCallView | None             # messages=[]: content loads with get_span_detail
+    tool: ToolCallView | None           # arguments/result None: they load with get_span_detail
+    approval: ApprovalView | None
+    subtree_tokens: int; subtree_cost_usd: Decimal; subtree_includes_unpriced: bool
+    truncated: bool; redacted: bool; content_dropped: bool   # spans.flags bits 1, 2, 4
+
+SpanKind = Literal["llm", "tool", "agent", "approval", "generic"]
+
+class LLMCallView(BaseModel):           # stable v0.2 evals/dataset shape [REQ-104]
+    span_id: str; operation: str; provider: str | None
+    request_model: str | None; response_model: str | None; model: str
+    params: dict[str, float | int | str | bool | None]
+    input_tokens: int | None; output_tokens: int | None; cached_input_tokens: int | None
+    cache_write_tokens: int | None; reasoning_tokens: int | None
+    cost_usd: Decimal | None; unpriced: bool; pricing_version: int | None
+    status: Literal["ok", "error"]; error_type: str | None
+    start_ns: int; duration_ns: int
+    finish_reasons: list[str]
+    messages: list[Message]; content_dropped: bool        # [REQ-034, REQ-040]
+
+class Message(BaseModel):
+    role: Literal["system", "user", "assistant", "tool", "other"]   # unknown roles → "other"
+    name: str | None = None; finish_reason: str | None = None
+    direction: Literal["input", "output"]
+    parts: list[MessagePart]
+
+class MessagePart(BaseModel):
+    type: Literal["text", "tool_call", "tool_result", "reasoning", "other"]
+    content: str | None = None          # text, reasoning
+    id: str | None = None               # tool_call / tool_result
+    name: str | None = None             # tool_call
+    arguments_json: str | None = None   # tool_call arguments, JSON text
+    result_json: str | None = None      # tool_result content, JSON text
+    raw_type: str | None = None; raw_json: str | None = None      # other
+
+class ToolCallView(BaseModel):          # [REQ-151.c]
+    span_id: str; tool_name: str; tool_call_id: str | None; tool_type: str | None
+    status: Literal["ok", "error"]; error_type: str | None
+    start_ns: int; duration_ns: int
+    arguments_json: str | None = None; result_json: str | None = None   # filled by get_span_detail
+    content_dropped: bool
+
+class ApprovalView(BaseModel):          # [REQ-154 data, REQ-106.f]
+    kind: Literal["approval", "deferral", "elicitation"]
+    decision: Literal["approved", "rejected", "edited", "timeout", "pending"]
+    approval_key: str | None; approver: str | None
+    requested_ns: int; decided_ns: int | None; wait_ns: int | None
+    tool_call_id: str | None; tool_name: str | None; node_name: str | None
+
+class ErrorInfo(BaseModel):             # [REQ-151.d] from status and "exception" events
+    message: str | None; exception_type: str | None; stacktrace: str | None
+
+class SpanDetail(BaseModel):            # one lazy call for the span drawer [REQ-151]
+    span: SpanNode                      # kind, timing, status, Source (151.a)
+    llm: LLMCallView | None             # with messages (151.b)
+    tool: ToolCallView | None           # with arguments_json / result_json (151.c)
+    error: ErrorInfo | None             # (151.d)
+    raw: SpanRaw                        # (151.e)
+
+class SpanRaw(BaseModel):               # raw view of one span after redaction [REQ-030.b, REQ-151.e]
+    span_id: str
+    attributes: dict[str, JsonValue]; resource: dict[str, JsonValue]   # typed per Data Model §1.4
+    scope_name: str | None; scope_version: str | None
+    events: list[SpanEventRaw]          # name: str, time_ns: int, attributes: dict[str, JsonValue]
+    links: list[SpanLinkRaw]            # trace_id: str, span_id: str, attributes: dict[str, JsonValue]
+    dropped_keys: list[str]
+
+class AgentGraph(BaseModel):            # [REQ-153]
+    nodes: list[GraphNode]; edges: list[GraphEdge]
+    collapsed: bool                     # > 150 nodes: repeated executions merged [REQ-153.d]
+    fallback_sequence: bool             # no graph nodes → tool/LLM sequence [REQ-153.e]
+    total_executions: int               # node executions before collapsing
+
+class GraphNode(BaseModel):
+    id: str                             # stable within the Run ("n<k>")
+    label: str; kind: Literal["agent", "node", "tool", "llm", "approval"]   # §6.8
+    executions: int                     # > 1 = retried / repeated [REQ-153.b]
+    status: Literal["ok", "error"]      # error if any execution failed
+    interrupted: bool                   # an approval/deferral happened inside it [REQ-153.b]
+    span_ids: list[str]                 # first one is selected on click [REQ-153.c]
+
+class GraphEdge(BaseModel):
+    source: str; target: str
+    kind: Literal["parent", "sequence"]; count: int; taken: bool = True
+```
+
+**Sessions**
+
+```python
+class SessionSummary(BaseModel):        # [REQ-105.a, REQ-160.a]
+    project_id: str; session_id: str; external_id: str
+    first_ns: int; last_ns: int; run_count: int
+    input_tokens: int; output_tokens: int; cached_input_tokens: int; total_tokens: int
+    cost_usd: Decimal; includes_unpriced: bool
+
+class SessionRunView(BaseModel):        # [REQ-105.b]
+    run: RunSummary
+    cumulative_tokens: int; cumulative_cost_usd: Decimal; cumulative_includes_unpriced: bool
+
+class SessionDetail(BaseModel):
+    session: SessionSummary; runs: list[SessionRunView]   # chronological
+```
+
+**Dashboard** (REQ-106, REQ-107, REQ-141)
+
+```python
+class DashboardData(BaseModel):
+    project_ids: list[str]; time_from_ns: int; time_to_ns: int; bucket_ns: int
+    kpis: Kpis | None
+    runs_over_time: TimeSeries | None               # group = status (106.a)
+    model_usage: ModelUsage | None                  # 106.b
+    latency_by_operation: list[LatencyRow] | None   # 106.c
+    latency_by_node: list[LatencyRow] | None        # 106.c
+    tools: list[ToolStat] | None                    # top 10 by calls (106.d)
+    by_source: list[SourceUsage] | None             # 106.e
+    approvals: ApprovalStats | None                 # 106.f
+    metric_tokens: TimeSeries | None                # REQ-107; group = token type
+    failed: list[str]                   # names of the fields above whose query failed (REQ-130.d)
+
+class Kpis(BaseModel):                  # 106.g
+    runs: int; error_runs: int; error_rate: float
+    input_tokens: int; output_tokens: int; total_tokens: int
+    cost_usd: Decimal; unpriced_runs: int; includes_unpriced: bool
+    p95_duration_ns: int | None; active_sessions: int
+
+class SeriesPoint(BaseModel):
+    bucket_ns: int; group: str; value: int
+class TimeSeries(BaseModel):            # sparse, ordered by (bucket, group); missing = 0
+    bucket_ns: int; groups: list[str]; points: list[SeriesPoint]
+
+class ModelUsageRow(BaseModel):
+    model: str; bucket_ns: int | None   # None = total row
+    calls: int; input_tokens: int; output_tokens: int; cached_input_tokens: int
+    cost_usd: Decimal; unpriced_calls: int; includes_unpriced: bool
+class ModelUsage(BaseModel):
+    bucket_ns: int; totals: list[ModelUsageRow]; over_time: list[ModelUsageRow]
+
+class LatencyRow(BaseModel):            # nearest rank (DD-005)
+    group: str; count: int; p50_ns: int; p95_ns: int; p99_ns: int
+class ToolStat(BaseModel):
+    tool_name: str; calls: int; successes: int; errors: int; error_rate: float
+class SourceUsage(BaseModel):
+    source: SourceRef; runs: int; input_tokens: int; output_tokens: int
+    cost_usd: Decimal; unpriced_runs: int; includes_unpriced: bool
+class ApprovalDecisionCount(BaseModel):
+    decision: str; count: int; median_wait_ns: int | None
+class ApprovalStats(BaseModel):
+    by_decision: list[ApprovalDecisionCount]; median_wait_ns: int | None
+```
+
+**Selectors, live updates and storage**
+
+```python
+class ProjectRef(BaseModel):            # list_projects (selector) [REQ-130.a]
+    id: str; slug: str; name: str
+class SourceView(BaseModel):            # list_sources
+    project_id: str; source: SourceRef; first_seen_ns: int; last_seen_ns: int
+
+class ChangeNotice(BaseModel):          # §6.4 [REQ-140]
+    project_ids: list[str]
+    run_keys: list[RunRef]              # ≤ 200
+    truncated: bool                     # more Runs changed than listed: refresh the whole view
+    kinds: list[Literal["spans_committed", "runs_finalized", "purged", "settings_changed"]]
+
+class PurgeView(BaseModel):
+    trigger: Literal["scheduled", "manual"]; started_ns: int; finished_ns: int | None
+    deleted_traces: int; deleted_bytes_est: int; error_class: str | None
+class StorageStatus(BaseModel):         # [REQ-173]
+    estimated_bytes: int; physical_bytes: int | None
+    size_limit_bytes: int | None        # [retention] storage_size_limit; None = no limit
+    runs: int; spans: int; last_purge: PurgeView | None
+```
+
+**Admin** (§6.3)
+
+```python
+class Project(BaseModel):               # [REQ-170, REQ-173]
+    id: str; slug: str; name: str
+    content_storage: bool; retention_days: int        # 0 = keep forever
+    request_rate: int; request_burst: int; span_rate: int; span_burst: int
+    settings_version: int; created_at_ns: int; updated_at_ns: int; updated_by: str | None
+
+class ProjectSettingsPatch(BaseModel):  # every field optional; None = unchanged
+    name: str | None = None                                     # 1–100 chars
+    content_storage: bool | None = None
+    retention_days: int | None = None                           # 0–3650; 0 = keep forever
+    request_rate: int | None = None; request_burst: int | None = None   # ≥ 1
+    span_rate: int | None = None; span_burst: int | None = None         # ≥ 1
+
+class ApiKeyView(BaseModel):            # never the hash or the secret
+    key_id: str; prefix: str            # "al_<key_id>_"
+    label: str; created_at_ns: int; created_by: str | None
+    last_used_at_ns: int | None; revoked_at_ns: int | None; revoked: bool
+
+class CreatedApiKey(BaseModel):         # [REQ-170.b] returned once
+    key_id: str
+    plaintext: SecretStr                # repr/str masked; .get_secret_value() for the one-time display
+    snippet: str                        # OTEL_EXPORTER_OTLP_* lines (endpoint, headers)
+
+class PricingEntryView(BaseModel):      # USD per million tokens
+    provider: str = ""; model_pattern: str; match_kind: Literal["exact", "glob"]
+    input_usd_per_mtok: Decimal; output_usd_per_mtok: Decimal
+    cached_input_usd_per_mtok: Decimal | None = None
+    cache_write_usd_per_mtok: Decimal | None = None
+class PricingVersionInfo(BaseModel):
+    version: int; effective_from_ns: int; source: Literal["bundled", "editor", "csv"]
+    note: str | None; created_at_ns: int; created_by: str | None
+class PricingTable(BaseModel):          # [REQ-171.a]
+    info: PricingVersionInfo; entries: list[PricingEntryView]
+
+class UnpricedModel(BaseModel):         # [REQ-171.b]
+    provider: str; model: str; calls: int; last_seen_ns: int
+
+class PatternRule(BaseModel):
+    name: str                           # ^[a-z0-9_]{1,32}$
+    regex: str; enabled: bool = True
+class FieldRule(BaseModel):
+    key_glob: str; action: Literal["drop", "mask"]
+class RedactionRuleSet(BaseModel):      # §6.3
+    presets: dict[Literal["secrets", "email", "phone", "credit_card"], bool]
+    pattern_rules: list[PatternRule]; field_rules: list[FieldRule]
+
+class SavedFilterView(BaseModel):       # [REQ-102.a]
+    id: str; project_id: str; name: str
+    query: str                          # the Runs URL query string of §6.2, canonical form
+    created_by: str | None; created_at_ns: int; updated_at_ns: int
+```
+
+`Viewer` (top of §6) stays a frozen dataclass.
+
+### 6.8 Kind mapping between storage and DTOs [Analyze A-10]
+
+One table, implemented once in `query` (`query.kinds`) and used by the span tree, the graph and
+the UI colors (REQ-130.b).
+
+| Storage value | DTO value | Notes |
+|---|---|---|
+| `spans.category = llm` | `SpanKind "llm"` | `SpanNode.is_genai = true` |
+| `spans.category = tool` | `SpanKind "tool"` | `is_genai = true` |
+| `spans.category = agent` | `SpanKind "agent"` | `is_genai = true` |
+| `spans.category = approval` | `SpanKind "approval"` | `is_genai = true` |
+| `spans.category = generic_genai` | `SpanKind "generic"` | `is_genai = true` (GenAI badge, generic color) |
+| `spans.category = generic` | `SpanKind "generic"` | `is_genai = false` |
+| `graph_nodes.node_kind = agent` | `GraphNode.kind "agent"` | |
+| `graph_nodes.node_kind = workflow` | `GraphNode.kind "agent"` | Workflows render like agents |
+| `graph_nodes.node_kind = node` | `GraphNode.kind "node"` | |
+| graph node whose span has `category = approval` | `GraphNode.kind "approval"` | Overrides the row above |
+| LLM / tool span in a fallback sequence (REQ-153.e) | `GraphNode.kind "llm"` / `"tool"` | Only when `fallback_sequence = true` |
+
+`GraphNode.interrupted` is true when an `approvals` row of the Run falls inside the node (its span
+or a descendant span before the next graph node). Labels follow REQ-150.a: `chat <model> · <n>
+tok`, `execute_tool <tool>`, `invoke_agent <agent>`, otherwise the span name.
 
 ---
 
@@ -890,3 +1249,4 @@ When stdout is not a TTY, the key line is replaced by
 | 1.2 | 2026-10-31 | Analyze A-06: `get_span_raw` added to `StorageBackend` and `QueryService`, with the `SpanRaw` DTO. Every protocol method is owned by exactly one Tasks entry (P2 detailing). §5: protocol types are `store.records` dataclasses; §6 DTOs are built from them in `query` |
 | 1.3 | 2026-10-31 | Delta `changes/2026-10-p3-ingest-prep/`: `write_group` + `BatchRejected` with a 400 / `INVALID_ARGUMENT` row (A-04); `get_or_create_secret` (A-08); validation rules `future_timestamp`, `older_than_retention` and `ingest.max_clock_skew` (A-17) |
 | 1.3.1 | 2026-10-31 | Delta `changes/2026-10-saved-filter-scope/`: `delete_filter(project_id, filter_id)` is scoped to its Project (IDOR found by a security review) |
+| 1.4 | 2026-10-31 | Delta `changes/2026-10-p4-query-prep/`: §6.7 DTO reference with every field (A-05; `RunSummary.usage_source`), §6.8 kind mapping (A-10); `get_trace` paging, `get_span_detail`, `get_project`, `list_pricing_versions`, `list_projects_admin`; `RunFilter.sources` holds Source labels; cursor tag carries the sort |
