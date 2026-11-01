@@ -1,10 +1,10 @@
 # Tasks — reflex-agentlens v0.1
 
 > Source specs: [Constitution](../constitution.md) v1.2 · [PRD](../prd/agentlens-v0.1.md) v1.1 ·
-> [API Spec](../api/agentlens-api-v1.md) v1.4 · [Tech Design](../technical/agentlens-architecture.md) v1.4 ·
+> [API Spec](../api/agentlens-api-v1.md) v1.4.2 · [Tech Design](../technical/agentlens-architecture.md) v1.4 ·
 > [Data Model](../data-model/agentlens-schema.md) v1.3 · [Implementation Plan](../plans/agentlens-phase-1.md) v1.0
-> Plan phases detailed in this revision: **P0 (spikes), P1 (foundation and `core`), P2 (store), P3 (ingest) and P4 (query)** · Generated: 2026-10-31
-> Status: `APPROVED` (P3 and P4 detailing adopted under the standing authorization of 2026-10-31) · Version 1.3
+> Plan phases detailed in this revision: **P0 (spikes), P1 (foundation and `core`), P2 (store), P3 (ingest), P4 (query) and P5 (runtime, CLI)** · Generated: 2026-11-01
+> Status: `APPROVED` (P3–P5 detailing adopted under the standing authorization of 2026-10-31) · Version 1.4
 
 ## How this file works
 
@@ -419,6 +419,7 @@ contract-tested in exactly one task:
 | P2-07.2 | `list_sessions`, `get_session` |
 | P2-07.3 | `agg_kpis`, `agg_runs_over_time`, `agg_tokens_cost_by_model`, `agg_latency_percentiles`, `agg_tool_stats`, `agg_by_source`, `agg_approvals` |
 | P4-05.2 | `get_pricing_version` |
+| P5-03.2 | `count_purgeable` |
 | P2-09.1 | `purge_by_age`, `purge_by_size`, `storage_usage`, `last_purge`, `job_lock` |
 | P2-10.1 | `change_feed` |
 
@@ -1058,7 +1059,203 @@ from `develop`.
 
 ---
 
-## Phases P5–P10 — to be detailed at phase start
+## Phase P5 — Runtime, CLI, ops
+
+Detailed 2026-11-01 after P4. Inputs: API v1.4.2 §4 (operational HTTP), §7.3 (standalone auth),
+§8 (configuration and CLI); Tech Design v1.4 DD-001, DD-019, DD-020, §3.3 (error flows), §6.1;
+PRD REQ-004, 042, 074, 092, 200–202, 224, 321, 331, 340, 342. Code lives under
+`src/reflex_agentlens/app/` (runtime wiring: backend factory, lifespan, bootstrap, routes, auth,
+server) and `src/reflex_agentlens/cli/`; tests under `tests/unit/app/`, `tests/integration/app/`
+(Starlette apps through `httpx.ASGITransport` on both backends) and `tests/integration/cli/`
+(`main(argv)` in-process; a real subprocess only where a signal or a port is the subject). `app`
+and `cli` sit in the top layer and may import every lower package. Branches: `feat/P5-<nn>-<slug>`
+from `develop`.
+
+**Design notes.**
+- **Server.** `serve` and `collect` run a Starlette app on Granian's embedded server
+  (`granian.server.embed.Server`, ASGI interface) on the current event loop. The process installs
+  its own SIGTERM/SIGINT handlers, so shutdown order is ours (REQ-331). Reflex is mounted on this
+  app in P6-11; until then `serve` exposes the operational and OTLP routes only.
+- **Exit codes** (API §8.3) come from one mapping in `cli`: `ConfigError` → 2, port in use → 3,
+  schema mismatch → 4, `StorageUnavailable` at startup → 5, anything else → 1. Configuration
+  errors are reported before any port opens (REQ-202.b).
+- **Startup order** (`app.lifespan`): open the backend (→ 5) → schema status: OUTDATED with
+  auto-migrate → `migrate()`, OUTDATED without → 4 with the `db upgrade` hint, NEWER → 4 →
+  bundled pricing seed (`ingest.cost.bootstrap_pricing`) → first-run bootstrap (`serve` only) →
+  start the ingest engine → ready. Shutdown reverses it.
+- **Store addition** (protocol ownership, Analyze A-06): `count_purgeable(now_ns) -> int` for
+  `purge --dry-run` (owned by P5-03.2), with a contract test on both backends.
+
+### P5-01.1 · Backend factory and bind policy
+- **What**: `app/backend.py` `open_backend(cfg, *, mode)`: `sqlite://` → `SqliteBackend`,
+  `postgresql://` → `PostgresBackend` (pool size, finalization window from config); default URL
+  under `data_dir`; `collect` on SQLite → `ConfigError` (exit 2). `app/policy.py`
+  `check_bind(cfg)`: non-loopback `http_host`/`grpc_host` without `auth.mode` → `ConfigError`
+  explaining the three modes; `none` on a non-loopback bind → one WARNING log.
+- **REQ / design**: REQ-004.b, 071, 072, 224.b/c, API §8.3
+- **Depends on**: —
+- **Done**: unit tests for each URL scheme, the data-dir default, the SQLite `collect` refusal,
+  loopback detection (IPv4, IPv6, `localhost`) and the warning.
+- [x] 2026-11-01 · PR #31
+
+### P5-01.2 · Health routes and the `collect` app
+- **What**: `app/routes.py` `Health` (shutting-down flag, engine readiness, cached DB ping and
+  schema status, re-checked at most once per second) and `health_routes(health)`: `/healthz` and
+  `/readyz` exactly as API §4, no versions or config. `app/server.py` `build_app(cfg, runtime,
+  *, mode)`: Starlette with health + OTLP/HTTP routes (`ingest.http.otlp_routes`) and the
+  lifespan; `serve` adds the auth routes in P5-04.2.
+- **REQ / design**: REQ-340.a, 004.b, 330, API §4
+- **Depends on**: P5-01.1
+- **Done**: `/healthz` 200 and 503 while shutting down; `/readyz` 503 with the failing check named
+  when the DB is down, the schema is not current or ingest is not ready; bodies contain no
+  version or config value.
+- [x] 2026-11-01 · PR #31
+
+### P5-02.1 · Lifespan: migrations, pricing seed, engine
+- **What**: `app/lifespan.py` `Runtime(cfg, mode)` async context manager in the startup order of
+  the design notes; `SchemaMismatch` (exit 4) carries the message ("run `reflex-agentlens db
+  upgrade`" or "downgrade the database or upgrade agentlens"); the ingest engine from
+  `ingest.core.build_engine` with a store opener for the ingest loop; `QueryService` and
+  `AdminService` built on a second backend instance on the serving loop (`serve` only).
+- **REQ / design**: REQ-074.a/b/c, 060.b, DD-001
+- **Depends on**: P5-01.2
+- **Done**: an empty DB is migrated and seeded; auto-migrate off + outdated → 4 with the hint;
+  newer schema → 4; unreachable DB → `StorageUnavailable`; the engine is ready after enter and
+  stopped after exit, on both backends.
+- [x] 2026-11-01 · PR #31
+
+### P5-02.2 · First-run bootstrap and the session secret
+- **What**: `app/bootstrap.py`: on an empty Projects table `serve` creates Project `default` and
+  one key. The plaintext goes to the banner on a TTY (written to the stream, not `logging`),
+  else to `{data_dir}/bootstrap-api-key` (0600) and the banner names the path. With
+  `bootstrap.api_key` set, that key is stored hashed under its own `key_id` and never printed.
+  `session_secret`: config value, or `{data_dir}/session_secret` created 0600 with 32 random
+  bytes and reused. Banner format as API §8.3.
+- **REQ / design**: REQ-201.a/b, 321.a, 323.a, API §8.3
+- **Depends on**: P5-02.1
+- **Done**: TTY and non-TTY paths (file mode 0600, key absent from captured logs); the
+  configured key authenticates and appears in no output; a second start creates nothing; the
+  secret file is reused across starts.
+- [x] 2026-11-01 · PR #31
+
+### P5-03.1 · CLI parser, configuration and exit codes
+- **What**: `cli/main.py` with `argparse`: global `--config`; commands and options of API §8.3
+  (`serve` is the default); `--print-config` (`core.config.render_config`, secrets masked);
+  `version` (package, OTLP proto, semconv mapping versions); the exit-code mapping of the design
+  notes; errors on stderr naming the key and its source.
+- **REQ / design**: REQ-200.a, 202.a/b/d, API §8.3
+- **Depends on**: P5-02.1
+- **Done**: each command parses; unknown key → 2 naming key and source; `--print-config` masks
+  every secret; `version` prints the three versions; `--help` for every command.
+- [ ]
+
+### P5-03.2 · `db`, `keys` and `purge` commands
+- **What**: `db upgrade` (migrate, exit 0), `db status` (CURRENT | OUTDATED | NEWER plus revision
+  IDs); `keys create --project SLUG [--label]` (plaintext printed once), `keys list`, `keys
+  revoke KEY_ID`, through `AdminService` with a local full-scope admin viewer; `purge` runs
+  `ingest.jobs.Jobs.purge` once and prints the report; `purge --dry-run` prints the store's
+  `count_purgeable` and the size-cap excess without deleting. Store addition `count_purgeable`.
+- **REQ / design**: REQ-074, 170.b, 092.a, 042.a, API §8.3
+- **Depends on**: P5-03.1
+- **Done**: integration tests on both backends for every command and its error exits (unknown
+  slug → 2, unknown key → 2, unreachable DB → 5); dry-run deletes nothing; `count_purgeable`
+  contract test.
+- [ ]
+
+### P5-03.3 · `rebuild` and the span re-deriver
+- **What**: `ingest/rederive.py` `rederive(span, pricing) -> NormalizedSpan`: classification and
+  the derived rows (LLM call priced with the given version, tool call, approval, graph node,
+  agent usage, search document) recomputed from the stored span with the current mapping table;
+  stored content is not redacted or truncated again; identity, times, raw fields and the Session
+  key are kept. `rebuild [--project SLUG] [--since TIME]` runs `store.rebuild` and prints Runs
+  scanned / changed.
+- **REQ / design**: REQ-042.a, 035, 061
+- **Depends on**: P5-03.2
+- **Done**: re-deriving a freshly normalized span is the identity (golden fixtures); a pricing
+  change shows up in cost after `rebuild`; `--project` and `--since` narrow the scope.
+- [ ]
+
+### P5-03.4 · `serve`, `collect` and `demo` runners
+- **What**: `app/server.py` `run(cfg, mode)`: configuration and bind checks, then a port probe for
+  HTTP and gRPC (in use → exit 3 naming the port and the setting, e.g. `server.http_port` /
+  `--port`), then the Granian embedded server with `build_app`; SIGTERM/SIGINT handlers start the
+  shutdown of P5-05.1. `demo` is a stub that exits 2 with "the demo dataset ships with P8-02".
+- **REQ / design**: REQ-200.a/c, 004.a/b, DD-001
+- **Depends on**: P5-03.1
+- **Done**: subprocess test: `collect` on PG answers `/healthz` and accepts an OTLP/HTTP export;
+  a busy port → 3 with the port and setting named; `serve` on SQLite starts on a free port.
+- [ ]
+
+### P5-04.1 · Standalone auth: viewers and the session cookie
+- **What**: `app/auth.py`: `session_cookie(cfg, user, now)` / `read_session(cfg, cookie, now)`
+  (`core.security.sign`, payload `{sub, iat, exp}`); `standalone_viewer(cfg, headers,
+  client_ip)` for `none` / `password` / `proxy` per API §7.3 (proxy headers only from
+  `trusted_proxies`; admin group when configured). The Reflex hook that calls it is P6-03.
+- **REQ / design**: REQ-224.a/e, 321.a, API §7.3
+- **Depends on**: P5-02.2
+- **Done**: forged, expired and foreign-key cookies → `None`; proxy headers from an untrusted
+  peer are ignored; admin-group gating; property test: sign → read round-trips.
+- [ ]
+
+### P5-04.2 · Login and logout routes, CORS
+- **What**: `POST /_agentlens/auth/login` and `/logout` (404 outside `password` mode) exactly as
+  API §4: Origin/Referer host check → 403; `next` only as a same-origin relative path; cookie
+  `HttpOnly; SameSite=Lax; Path=/; Max-Age`, `Secure` when `public_url` is HTTPS; constant-time
+  credential compare; throttle (> 5 failures/min per IP → ≥ 1 s delay per further attempt). CORS
+  middleware pinned to `public_url` (or the derived origin), never `*`.
+- **REQ / design**: REQ-224.a/d, 321.a, 325, Tech Design §6.1 (A4)
+- **Depends on**: P5-04.1
+- **Done**: tests for every row of the API §4 login table, cookie flags over HTTP and HTTPS,
+  open-redirect attempts, throttle timing with an injected clock, CORS preflight from a foreign
+  origin refused.
+- [ ]
+
+### P5-05.1 · Graceful shutdown
+- **What**: on SIGTERM: `Health.shutting_down` (healthz 503), ingest admission closed (503 /
+  `UNAVAILABLE`), the writer drains within `shutdown_grace`, gRPC stops, the HTTP server stops,
+  exit 0.
+- **REQ / design**: REQ-331.a, Tech Design §3.3
+- **Depends on**: P5-03.4
+- **Done**: subprocess test: requests in flight at SIGTERM are committed and answered 200, new
+  ones get 503, the process exits 0 within the grace period.
+- [ ]
+
+### P5-06.1 · Rebuild under concurrent ingest
+- **What**: integration test (and fixes it reveals): `rebuild` while an exporter keeps sending;
+  the stored derived views equal those of a rebuild with ingest stopped; Runs changed reported.
+- **REQ / design**: REQ-042.b
+- **Depends on**: P5-03.3
+- **Done**: the test passes on both backends.
+- [ ]
+
+### P5-07.1 · Self-telemetry (extra `[selftelemetry]`)
+- **What**: `app/selftelemetry.py`: off by default; when enabled, an OTLP exporter (HTTP or
+  gRPC) for the spans and metrics of Tech Design §7.2 with `service.name=reflex-agentlens` and no
+  ingested values; loop check (endpoint resolves to loopback, unspecified or a bind address and
+  its port is our HTTP or gRPC port) → `ConfigError` (exit 2); a missing extra → exit 2 naming
+  the extra.
+- **REQ / design**: REQ-342.a/b/c, 323.a, DD-020, Constitution Art. 9
+- **Depends on**: P5-03.4
+- **Done**: loop-check table test; with an in-memory exporter, an export produces the expected
+  spans/metrics and no attribute value from the payload.
+- [ ]
+
+### P5-08.1 · Topology equivalence and phase gate
+- **What**: the golden OTLP suite (P3-13) sent through the `serve` app and through the `collect`
+  app (PG) yields identical stored data. P5 gate.
+- **REQ / design**: REQ-004.c
+- **Depends on**: P5-03.4
+- **Done**: equivalence test green; plan P5 Done: every CLI command has an integration test,
+  including every non-zero exit code; `collect` on PG and `serve` pass the health, shutdown and
+  outage tests; `mypy --strict` clean; import contracts kept.
+- [ ]
+
+**Suggested batches:** (1) P5-01.1, P5-01.2, P5-02.1, P5-02.2 · (2) P5-03.1, P5-03.2, P5-03.3,
+P5-03.4 · (3) P5-04.1, P5-04.2 · (4) P5-05.1, P5-06.1, P5-07.1, P5-08.1.
+
+---
+
+## Phases P6–P10 — to be detailed at phase start
 
 Each phase gets its atomic tasks in a new revision of this file when the previous phase's Done
 criteria are met. The plan tasks, their scope, estimates and dependencies are fixed in the
@@ -1066,7 +1263,6 @@ criteria are met. The plan tasks, their scope, estimates and dependencies are fi
 
 | Phase | Plan tasks | Detailed when | Prerequisite inputs |
 |---|---|---|---|
-| P5 Runtime/CLI | P5-01 … P5-08 | P3-09 done | — |
 | P6 UI | P6-01 … P6-13 | P4-02 done | S1 decisions (P0-06.1) |
 | P7 Delivery | P7-01 … P7-06 | P6-11 done | PyPI trusted publisher, GHCR |
 | P8 Recipes/bench | P8-01 … P8-06 | P3 done | Reference machine (P8-06) |
@@ -1251,6 +1447,7 @@ the matrix). No requirement is deferred at this point.
 | 2026-10-31 | P4-02.1, 02.2, 02.3 | Done | PR #28; `query/service.py` `QueryService(store, cursor_key, clock_ns)`: runs, traces (paged DFS tree, totals, LLM-call table), LLM messages, span drawer (`get_span_detail`: messages, tool I/O, `ErrorInfo`, raw), sessions, facets, selectors, `get_project`; `query/tree.py` iterative and cycle-safe (a parent cycle is broken at its earliest span, flagged `missing_parent`). `core.semconv` gained `EXCEPTION_STACKTRACE`. `get_trace` → `graph=None` until P4-04.1 |
 | 2026-10-31 | P4-03.1, 04.1 | Done | PR #29; `QueryService.dashboard` (nine aggregates via `asyncio.gather`, failing panels listed in `failed`, all failing → `StorageUnavailable`), `storage_status` (full-scope viewers only), `query/graph.py` (retries merged, approvals mark `interrupted`, collapse by node path above 150, LLM/tool fallback), `get_graph(full=)`. API v1.4.1 records these three details |
 | 2026-11-01 | P4-05.1, 05.2, 06.1 | Done | PR #30; `query/admin.py` `AdminService` (admin gating, Projects, API keys with plaintext only in `CreatedApiKey`, pricing versions + CSV via `store/pricing_csv.py`, unpriced models, recompute, redaction rules validated at save, preview, saved filters, demo-mode guard); `QueryService.subscribe` coalescing. Store addition `get_pricing_version` (API v1.4.2). Fix: the adversarial redaction sample was 32 KiB, not 64 KiB, and let `(a+)+$` pass the budget intermittently. **P4 gate**: `query` coverage 91-98 % per module (≥ 85 %), `mypy --strict` clean, 6 import contracts kept, 1,382 tests green on SQLite and PostgreSQL |
+| 2026-11-01 | P5-01.1, 01.2, 02.1, 02.2 | Done | PR #31; Tasks v1.4 (P5 detailed); `app/backend.py` (URL → backend, `collect` refuses SQLite), `app/policy.py` (non-loopback HTTP bind needs `auth.mode`; gRPC carries ingest only), `app/routes.py` (`Health` with a 1 s probe cache), `app/lifespan.py` `runtime()` (startup order of the P5 design notes; the ingest-loop backend shares the serving backend's change feed and origin ID), `app/bootstrap.py` (default Project + key, TTY banner or 0600 file, hashed configured key, session secret file), `app/server.py` `build_app`. An unusable SQLite path is `StorageUnavailable` (exit 5) |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).
@@ -1287,3 +1484,4 @@ parallel, on the S2 branch).
 | 1.1 | 2026-10-31 | Ernesto Crespo (with Claude) | Phase P2 detailed: 21 atomic tasks, protocol-method ownership table (A-06), protocol return types as `store.records` (A-05, storage side), A-01 multi-writer test (P2-06.2), no pricing seed in `0001_initial` (A-11) |
 | 1.2 | 2026-10-31 | Ernesto Crespo (with Claude) | Phase P3 detailed: 25 atomic tasks in 8 batches; store additions `write_group` / `get_or_create_secret` owned by P3-06.1; Delta `changes/2026-10-p3-ingest-prep/` (A-04, A-07, A-08, A-17) folded into API v1.3, Tech Design v1.4, Data Model v1.2 |
 | 1.3 | 2026-10-31 | Ernesto Crespo (with Claude) | Phase P4 detailed: 11 atomic tasks in 4 batches; Delta `changes/2026-10-p4-query-prep/` (A-05 DTO reference, A-10 kind mapping) folded into API v1.4, Data Model v1.3 |
+| 1.4 | 2026-11-01 | Ernesto Crespo (with Claude) | Phase P5 detailed: 12 atomic tasks in 4 batches; Granian embedded server, startup order and exit-code mapping as design notes; store addition `count_purgeable` owned by P5-03.2; span re-deriver for `rebuild` (P5-03.3) |
