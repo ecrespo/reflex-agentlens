@@ -261,6 +261,7 @@ class AdminService:
     ) -> dto.PricingTable:
         """REQ-060.c: a new immutable version; earlier versions never change."""
         self._mutation(viewer)
+        self._full_scope(viewer)  # pricing is global: a Project-limited admin cannot change it
         if note is not None and len(note) > _MAX_NOTE:
             raise ValidationError("note", f"at most {_MAX_NOTE} characters")
         saved = await self.store.save_pricing(self._entries(entries), viewer.id, note=note)
@@ -286,6 +287,7 @@ class AdminService:
     async def import_pricing_csv(self, viewer: dto.Viewer, csv_text: str) -> dto.PricingTable:
         """REQ-171.c (SHOULD): a new version from CSV; errors name the line and column."""
         self._mutation(viewer)
+        self._full_scope(viewer)  # pricing is global: a Project-limited admin cannot change it
         if len(csv_text.encode()) > 4 << 20:
             raise ValidationError("csv", "at most 4 MiB")
         parsed = parse_pricing_csv(csv_text)

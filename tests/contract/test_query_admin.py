@@ -71,6 +71,10 @@ async def test_admin_gating_req_174(db: ContractDB, tmp_path: Path) -> None:
         await svc.list_api_keys(limited, project.id)
     with pytest.raises(Forbidden):
         await svc.create_project(limited, "Z", "z-proj")
+    with pytest.raises(Forbidden):  # global pricing needs a full-scope admin
+        await svc.save_pricing(limited, [])
+    with pytest.raises(Forbidden):
+        await svc.import_pricing_csv(limited, "")
 
 
 async def test_projects_req_170_173(db: ContractDB, tmp_path: Path) -> None:
