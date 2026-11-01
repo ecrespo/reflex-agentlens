@@ -1417,7 +1417,7 @@ tests under `tests/unit/ui/` (view models, URL codecs, Mermaid text, sanitizers:
 - **REQ / design**: REQ-105, 160
 - **Depends on**: P6-02.1
 - **Done**: view-model tests (cumulative series); compile test.
-- [ ]
+- [x] 2026-11-01 · PR #39
 
 ### P6-09.1 · Dashboard
 - **What**: `pages/dashboard.py`: KPI cards and the silverpoint charts of DD-017's mapping,
@@ -1426,7 +1426,7 @@ tests under `tests/unit/ui/` (view models, URL codecs, Mermaid text, sanitizers:
 - **REQ / design**: REQ-106, 107, 130.c, 141
 - **Depends on**: P6-02.1
 - **Done**: view-model tests (series shaping, click → Runs URL); compile test.
-- [ ]
+- [x] 2026-11-01 · PR #39
 
 ### P6-10.1 · Settings: Projects and keys
 - **What**: Projects list/create/delete (name confirmation), keys create (plaintext once + copy +
@@ -1695,6 +1695,7 @@ the matrix). No requirement is deferred at this point.
 | 2026-11-01 | P6-01.1, 01.2, 02.1, 03.1, 03.2 | Done | PR #36; Tasks v1.5 and Delta `changes/2026-11-p6-ui-prep/` (A-12) merged as PR #35. Reflex-free view models in the new `reflex_agentlens.views` package (`guard`, `registry`, `chrome`, `snippets`, `tokens`) instead of `pages/_*` modules, because importing any `pages.*` module imports Reflex; new import contract (no Reflex, no UI packages in `views`). Contract 6 forbids direct `store` imports only (the `query` path is indirect by design); typing-only imports excluded. `pages/_base.py` (`AgentlensState`, `ui_event`, frame, inline states), `components/theme.py` + `chrome.py`, page frames per route, lazy `reflex_agentlens` API (`standalone_app` follows in P6-11), `app/mount.py`. Import audit in a clean subprocess; A-12 rule tested with an injected clock. Fix found on the way: a flaky P5 shutdown test now waits for five queued batches |
 | 2026-11-01 | P6-04.1, 04.2, 05.1, 05.2 | Done | PR #37. View models in `views/runs.py`, `views/trace.py`, `views/fmt.py` (not `pages/runs_vm.py` / `components/waterfall_vm.py`, same reason as batch 1); pages `pages/runs_page.py`, `pages/trace_page.py`. Live updates run as Reflex background tasks that end on the next notice after a reload or route change. Cost and raw tabs show Run totals and identifiers; the graph tab and span drawer stay placeholders until P6-07.2 / P6-06.2. Extra: page-event tests over real services on both backends |
 | 2026-11-01 | P6-06.1, 06.2, 07.1, 07.2 | Done | PR #38. Pure parts in `views/richtext.py`, `views/detail.py`, `views/graph.py`; Reflex parts in `components/richtext.py`, `components/drawer.py` and the trace page. Rich text: react-markdown without rehype-raw/math, `skipHtml`, one URL policy (http, https, mailto) in Python and JS, checked against each other with node when available; images become links. The raw tab is built lazily from the `raw` already in `get_span_detail` (no second `get_span_raw` call). Graph labels use a closed character set plus Mermaid entity codes. Tab, span and replay changes rewrite the URL with `history.replaceState` instead of reloading the trace. Import audit now checks the destination of symlinks/renames (reflex-mermaidjs links its asset under the working directory) |
+| 2026-11-01 | P6-08.1, 09.1 | Done | PR #39. View models `views/sessions.py`, `views/dashboard.py`; pages `sessions_page.py`, `session_page.py`, `dashboard_page.py`. silverpoint draws its demo dataset when `data` is omitted: every chart gets `data`, and a compile test over all pages enforces it. Cost values become `float` only as chart inputs; every displayed cost is formatted from the `Decimal`. Click-to-filter (REQ-141.c) keeps the Runs URLs on the server and the browser returns only a row key. Dashboard live refresh uses `subscribe(min_interval=10)` and re-resolves the viewer per step |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).
