@@ -5,10 +5,11 @@ OpenTelemetry GenAI traces from LangGraph, PydanticAI, OpenAI Agents or any OTLP
 live run timelines, graph replay, tool-call inspection, token and cost analytics — in pure Python,
 on your infra. Embed it as a page in your own app or run it standalone.
 
-> **Status: pre-alpha, not usable yet.** The v0.1 specification is approved, the feasibility
-> spikes are done and the foundation (phase P1: tooling, CI and the `core` package) is built.
-> Storage (P2) is in progress: the schema, the Alembic migrations and the SQLite backend with its
-> write path are built and in review; the PostgreSQL backend and the read queries come next. Nothing is published on PyPI. See [Roadmap](#roadmap).
+> **Status: pre-alpha, not usable yet.** The v0.1 specification is approved and phases P0–P5
+> are built: storage on SQLite and PostgreSQL, OTLP ingest (HTTP and gRPC), the query layer, and
+> the runtime with its CLI. The UI (P6) is in progress: the Runs, Trace (span drawer, agent graph,
+> replay), Sessions and Dashboard pages are done; Settings and the standalone app come next.
+> Nothing is published on PyPI. See [Roadmap](#roadmap).
 
 ## Why
 
@@ -97,7 +98,7 @@ uv run mypy                   # strict type checking
 uv run lint-imports           # layer and import contracts
 uv run python scripts/check_req_coverage.py --report-only   # MUST criteria cited by tests
 uv build                      # sdist + wheel
-uv run reflex-agentlens       # CLI (currently prints the version)
+uv run reflex-agentlens --help   # CLI: serve, collect, demo, db, rebuild, purge, keys, version
 ```
 
 Tests marked `pg` run only when `AGENTLENS_TEST_PG_URL` points at a PostgreSQL ≥ 15 server; each
@@ -121,11 +122,16 @@ every pull request.
 | Phase | Content | State |
 |---|---|---|
 | P0 | Spikes: pre-built frontend in the wheel (S1), SQL performance on both backends (S2) | Done — results in Tech Design §11 |
-| P1 | Package skeleton, quality gates, CI, `core` (errors, IDs, time, money, API keys, config, logging) | Done — in review |
-| P2 | Store: schema and migrations on SQLite and PostgreSQL, write path, contract tests | In progress (schema, migrations and the SQLite write path in review) |
-| P3–P4 | Ingest, query | Planned |
-| P5–P7 | CLI, UI pages, embedding and standalone app | Planned |
-| P8–P10 | Benchmarks, Docker, docs, site, release | Planned |
+| P1 | Package skeleton, quality gates, CI, `core` (errors, IDs, time, money, API keys, config, logging) | Done |
+| P2 | Store: schema and migrations on SQLite and PostgreSQL, write path, reads, change feed, contract tests | Done |
+| P3 | Ingest: OTLP/HTTP and gRPC, semconv mapping, derivation, redaction, pricing, admission and limits | Done |
+| P4 | Query: DTOs, keyset cursors, Runs/Trace/Sessions/Dashboard queries, agent graph, admin service | Done |
+| P5 | Runtime, CLI and ops: lifespan, bootstrap, standalone auth, graceful shutdown, self-telemetry | Done |
+| P6 | UI: Runs, Trace, Sessions, Dashboard (done); Settings, standalone app and CSP, smoke suite (next) | In progress — batches 1–4 of 7 |
+| P7 | Delivery: wheel with the pre-built frontend, PyPI, container image | Planned |
+| P8 | Recipes and benchmarks | Planned |
+| P9 | Docs and site | Planned |
+| P10 | Release | Planned |
 
 ## License
 
