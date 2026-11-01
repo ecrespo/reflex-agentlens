@@ -33,10 +33,13 @@ __all__ = [
     "money",
     "optional_money",
     "pricing_table",
+    "pricing_table_entry",
     "pricing_version_info",
     "project",
     "project_ref",
     "purge_view",
+    "redaction_record",
+    "redaction_rules",
     "run_summary",
     "saved_filter_view",
     "session_detail",
@@ -510,4 +513,56 @@ def saved_filter_view(f: r.SavedFilter) -> dto.SavedFilterView:
         created_by=f.created_by,
         created_at_ns=f.created_at_ns,
         updated_at_ns=f.updated_at_ns,
+    )
+
+
+def pricing_table_entry(e: r.PricingEntry) -> dto.PricingEntryView:
+    return dto.PricingEntryView(
+        provider=e.provider,
+        model_pattern=e.model_pattern,
+        match_kind=e.match_kind,
+        input_usd_per_mtok=nusd_per_mtok_to_price(e.input_nusd_per_mtok),
+        output_usd_per_mtok=nusd_per_mtok_to_price(e.output_nusd_per_mtok),
+        cached_input_usd_per_mtok=_price(e.cached_input_nusd_per_mtok),
+        cache_write_usd_per_mtok=_price(e.cache_write_nusd_per_mtok),
+    )
+
+
+_PRESETS = ("secrets", "email", "phone", "credit_card")
+
+
+def redaction_rules(rules: r.RedactionRuleSet) -> dto.RedactionRuleSet:
+    """Stored rule set → DTO (the store keeps rules as validated JSON objects)."""
+    presets = {name: rules.presets.get(name) is True for name in _PRESETS}
+    patterns = [
+        dto.PatternRule(
+            name=str(x.get("name") or f"rule{i + 1}"),
+            regex=str(x["regex"]),
+            enabled=x.get("enabled", True) is not False,
+        )
+        for i, x in enumerate(rules.pattern_rules)
+        if isinstance(x, dict) and isinstance(x.get("regex"), str)
+    ]
+    fields = [
+        dto.FieldRule(
+            key_glob=str(x["key_glob"]), action="drop" if x.get("action") == "drop" else "mask"
+        )
+        for x in rules.field_rules
+        if isinstance(x, dict) and isinstance(x.get("key_glob"), str)
+    ]
+    return dto.RedactionRuleSet(presets=presets, pattern_rules=patterns, field_rules=fields)  # type: ignore[arg-type]
+
+
+def redaction_record(
+    rules: dto.RedactionRuleSet, author: str | None, at_ns: int
+) -> r.RedactionRuleSet:
+    """DTO → the stored JSON form read by ``ingest.redaction``."""
+    return r.RedactionRuleSet(
+        presets={name: bool(rules.presets.get(name, False)) for name in _PRESETS},  # type: ignore[call-overload]
+        pattern_rules=[
+            {"name": p.name, "regex": p.regex, "enabled": p.enabled} for p in rules.pattern_rules
+        ],
+        field_rules=[{"key_glob": f.key_glob, "action": f.action} for f in rules.field_rules],
+        updated_at_ns=at_ns,
+        updated_by=author,
     )

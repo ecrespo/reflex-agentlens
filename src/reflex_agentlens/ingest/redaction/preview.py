@@ -22,7 +22,7 @@ from reflex_agentlens.ingest.redaction.hook import HookFailed, apply_view, span_
 from reflex_agentlens.ingest.redaction.rules import validate_rule_set
 from reflex_agentlens.store.records import RedactionRuleSet
 
-__all__ = ["MAX_SAMPLE_BYTES", "preview_redaction"]
+__all__ = ["MAX_SAMPLE_BYTES", "preview_redaction", "validate_rule_set"]
 
 MAX_SAMPLE_BYTES = 64 * 1024
 _SPAN_KEYS = ("name", "status_message", "attributes", "resource", "events", "links")
