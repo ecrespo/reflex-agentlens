@@ -21,6 +21,7 @@ from reflex_agentlens.app.backend import open_backend
 from reflex_agentlens.app.bootstrap import KEY_FILE
 from reflex_agentlens.app.server import run_server
 from reflex_agentlens.ingest.rederive import rederive
+from reflex_agentlens.ingest.writer import WriteQueue
 from reflex_agentlens.store.postgres.backend import PostgresBackend
 from reflex_agentlens.store.records import NormalizedSpan, PricingVersion, RebuildScope
 from reflex_agentlens.store.sqlite.backend import SqliteBackend
@@ -83,10 +84,19 @@ async def test_graceful_shutdown_commits_in_flight_requests_req_331a(
     original = store_cls.write_group
 
     async def slow_write_group(self: Any, batches: Any) -> Any:
-        await asyncio.sleep(0.6)  # keep the requests in flight when the stop arrives
+        await asyncio.sleep(2.0)  # keep the requests in flight when the stop arrives
         return await original(self, batches)
 
     monkeypatch.setattr(store_cls, "write_group", slow_write_group)
+    queued: list[int] = []  # appended from the ingest thread (list.append is atomic)
+    original_put = WriteQueue.put
+
+    def counting_put(self: WriteQueue, batch: Any, size: int | None = None) -> Any:
+        future = original_put(self, batch, size)
+        queued.append(1)
+        return future
+
+    monkeypatch.setattr(WriteQueue, "put", counting_put)
     port = free_port()
     cfg = fresh.config(**{"server.http_port": port, "server.shutdown_grace": "10s"})
     stop = asyncio.Event()
@@ -100,7 +110,11 @@ async def test_graceful_shutdown_commits_in_flight_requests_req_331a(
             )
             for t in range(1, 6)
         ]
-        await asyncio.sleep(0.3)  # admitted, waiting for their (slow) commit
+        for _ in range(400):  # every batch admitted and queued, none committed yet
+            if len(queued) == 5:
+                break
+            await asyncio.sleep(0.025)
+        assert len(queued) == 5
         stop.set()  # what SIGTERM does
         await asyncio.sleep(0.05)
         late = await client.post("/v1/traces", content=body(agent_trace(99)), headers=headers)
