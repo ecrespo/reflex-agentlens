@@ -193,7 +193,10 @@ class TraceState(AgentlensState):
                 async with self:
                     if self.generation != generation or not self.in_progress:
                         return
-                    _, error = await guarded(lambda: self._reload(viewer, ref))
+                    viewer = await self._live_viewer()  # never a stale identity (A-12)
+                    if viewer is None:
+                        return
+                    _, error = await guarded(lambda: self._reload(viewer, ref))  # noqa: B023
                     if error is not None:
                         self._fail(error)
                         return

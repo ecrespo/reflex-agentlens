@@ -127,3 +127,26 @@ async def test_trace_page_loads_toggles_and_reports_not_found(
     monkeypatch.setattr(TraceState, "_url", lambda self: ("ef" * 16, TraceUrl()))
     await state.load_trace()
     assert (state.found, state.error_kind) == (False, "not_found")
+
+
+@pytest.mark.usefixtures("wired")
+async def test_live_steps_ask_the_hook_again_after_the_cache_a12(
+    db: ContractDB, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Live tasks never keep the identity they started with: once the cached answer has
+    expired a revoked viewer stops the task and sees "not authorized"."""
+    await setup(db, tmp_path)
+    allowed = [True]
+
+    async def revocable(state: Any) -> dto.Viewer | None:
+        return dto.Viewer("ana", "Ana", is_admin=False) if allowed[0] else None
+
+    reg = reg_module.registry()
+    reg.auth = revocable
+    state = runs_state(monkeypatch, "")
+    state.authorized = True
+    assert await state._live_viewer() is not None
+    allowed[0] = False
+    reg.viewers.forget(state._token())  # what the 30 s expiry does
+    assert await state._live_viewer() is None
+    assert state.authorized is False

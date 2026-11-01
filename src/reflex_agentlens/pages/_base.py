@@ -71,6 +71,17 @@ class AgentlensState(rx.State):
         here = parts.path + (f"?{parts.query}" if parts.query else "")
         return rx.redirect(f"{login}?next={quote(here, safe='/')}")
 
+    async def _live_viewer(self) -> Viewer | None:
+        """The viewer for one live-update step (A-12: reused ≤ 30 s, then the hook is asked
+        again). ``None`` ends the live task: the page shows the error or "not authorized"."""
+        viewer, error = await guarded(lambda: self._viewer(page_load=False))
+        if error is not None:
+            self._fail(error)
+            return None
+        if viewer is None:
+            self._set_viewer(None)
+        return viewer
+
     @rx.event
     async def check_auth(self) -> EventSpec | None:
         """Page ``on_load``: always asks the hook (PRD v1.2 REQ-191.a)."""

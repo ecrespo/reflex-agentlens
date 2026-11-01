@@ -209,12 +209,15 @@ class RunsState(AgentlensState):
                     path = str(self.router.page.path).rstrip("/")
                     if self.generation != generation or not path.endswith("/runs"):
                         return
+                    viewer = await self._live_viewer()  # never a stale identity (A-12)
+                    if viewer is None:
+                        return
                     shown = [run_key(r) for r in self.rows]
                     action = on_notice(notice, shown, live_first_page=self.live_first)
                     if action.kind == "count":
                         self.new_runs += action.new_runs
                     elif action.kind == "refresh":
-                        _, error = await guarded(lambda: self._list(viewer, q))
+                        _, error = await guarded(lambda: self._list(viewer, q))  # noqa: B023
                         if error is not None:
                             self._fail(error)
         except Exception as exc:  # the subscription is best effort; the page still works
