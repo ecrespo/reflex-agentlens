@@ -19,6 +19,7 @@ Implemented so far:
 - P2-08.2: ``save_pricing``, ``list_pricing_versions``, ``get_pricing``, ``list_unpriced_models``,
   ``save_redaction_rules``, ``get_ingest_settings``, ``list_saved_filters``, ``save_filter``,
   ``delete_filter``
+- P4-05.2: ``get_pricing_version``
 - P2-08.3: ``finalize_stale_runs``, ``rebuild``, ``recompute_costs``
 - P2-09.1: ``purge_by_age``, ``purge_by_size``, ``storage_usage``, ``last_purge``, ``job_lock``
 - P2-10.1 / P2-10.2: ``changes`` (the :class:`ChangeFeed`), ``start_change_listener``
@@ -244,6 +245,9 @@ class StorageBackend(Protocol):
 
     async def get_pricing(self, at_ns: int | None = None) -> PricingVersion:
         """The version in effect at ``at_ns`` (default now); ``NotFound`` if none (REQ-060.c)."""
+
+    async def get_pricing_version(self, version: int) -> PricingVersion:
+        """One version by number; ``NotFound`` if it does not exist (REQ-171.a history)."""
 
     async def list_unpriced_models(self, scope: ProjectScope) -> list[UnpricedModel]:
         """Models of unpriced LLM calls, most calls first (REQ-171.b)."""
