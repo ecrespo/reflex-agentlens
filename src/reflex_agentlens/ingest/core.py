@@ -40,7 +40,7 @@ from reflex_agentlens.ingest.engine import EngineRuntime, EngineStore, IngestEng
 from reflex_agentlens.ingest.errors import BatchRejectedError, Unauthenticated
 from reflex_agentlens.ingest.jobs import JobStore, SettingsCache, job_services
 from reflex_agentlens.ingest.limits import OverloadGuard, RateLimiter, decode_content
-from reflex_agentlens.ingest.metrics import normalize_metrics
+from reflex_agentlens.ingest.metrics import genai_points, normalize_metrics, scrubber
 from reflex_agentlens.ingest.normalize.pipeline import normalize_batch
 from reflex_agentlens.ingest.redaction.hook import load_hook
 from reflex_agentlens.store.records import BatchRejected, IngestSettings, MetricPoint
@@ -166,7 +166,16 @@ class IngestCore:
     async def export_metrics(
         self, admitted: Admitted, request: ExportMetricsServiceRequest
     ) -> ExportMetricsServiceResponse:
-        result = normalize_metrics(request, admitted.project_id)
+        pid, settings = admitted.project_id, admitted.settings
+        # data points count against the span bucket, like spans (REQ-007.a)
+        self.limiter.check_spans(
+            pid, genai_points(request), settings.span_rate, settings.span_burst
+        )
+        try:
+            ctx = await self.cache.context(pid, self.clock_ns())
+        except NotFound:
+            raise Unauthenticated("unknown") from None
+        result = normalize_metrics(request, pid, scrubber(ctx))
         self.metrics_discarded += result.discarded
         if result.points and self.store_metrics:
             try:

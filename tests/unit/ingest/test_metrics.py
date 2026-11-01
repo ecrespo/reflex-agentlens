@@ -9,7 +9,11 @@ from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import (
     ExportMetricsServiceRequest,
 )
 
-from reflex_agentlens.ingest.metrics import normalize_metrics
+from reflex_agentlens.ingest.cost import PricingSnapshot
+from reflex_agentlens.ingest.metrics import genai_points, normalize_metrics, scrubber
+from reflex_agentlens.ingest.normalize.pipeline import BatchContext
+from reflex_agentlens.ingest.redaction.rules import compile_rules
+from reflex_agentlens.store.records import RedactionRuleSet
 
 T = "1793000000000000000"
 
@@ -174,3 +178,60 @@ def test_invalid_genai_points_are_rejected() -> None:
         "name_too_long": 1,
     }
     assert result.rejections.message().startswith("8 data points rejected")
+
+
+# ── same treatment as span attributes (security review: REQ-039/041 parity) ─────────────────
+
+
+def ctx_with(**kw: Any) -> BatchContext:
+    rules = compile_rules(
+        RedactionRuleSet({"email": True}, [], [{"key_glob": "user.token", "action": "drop"}])
+    )
+    base: dict[str, Any] = {
+        "project_id": "p",
+        "received_at_ns": 1,
+        "rules": rules,
+        "session_secret": b"k" * 32,
+        "pricing": PricingSnapshot(()),
+        "max_attribute_value_bytes": 64,
+    }
+    return BatchContext(**(base | kw))
+
+
+def gauge_with(*attrs: dict[str, Any]) -> ExportMetricsServiceRequest:
+    point = {"timeUnixNano": T, "asInt": "1", "attributes": list(attrs)}
+    return req({"name": "gen_ai.custom", "gauge": {"dataPoints": [point]}})
+
+
+def test_point_attributes_are_redacted_and_truncated() -> None:
+    request = gauge_with(
+        attr("user.email", "ana@example.com"),
+        attr("user.token", "s3cret"),
+        attr("note", "y" * 500),
+    )
+    (point,) = normalize_metrics(request, "p", scrubber(ctx_with())).points
+    assert "ana@example.com" not in str(point.attributes)
+    assert "user.token" not in point.attributes
+    note = point.attributes["note"]
+    assert isinstance(note, str)
+    assert len(note.encode()) < 200
+    assert "truncated" in note
+    raw = normalize_metrics(request, "p").points[0]
+    assert point.attrs_hash != raw.attrs_hash  # hashed after scrubbing
+
+
+def test_hook_failure_rejects_the_point() -> None:
+    def boom(_: dict[str, Any]) -> dict[str, Any]:
+        raise RuntimeError("no")
+
+    result = normalize_metrics(gauge_with(attr("a", "b")), "p", scrubber(ctx_with(hook=boom)))
+    assert result.points == []
+    assert result.rejections.counts() == {"redaction_hook_error": 1}
+
+
+def test_genai_points_counts_only_genai() -> None:
+    request = req(
+        {"name": "gen_ai.x", "gauge": {"dataPoints": [{"timeUnixNano": T, "asInt": "1"}] * 3}},
+        {"name": "other", "gauge": {"dataPoints": [{"timeUnixNano": T, "asInt": "1"}] * 5}},
+    )
+    assert genai_points(request) == 3

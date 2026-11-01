@@ -342,3 +342,15 @@ async def test_metrics_json(rig: IngestRig) -> None:
     resp = await post(rig, body, path="/v1/metrics", content_type="application/json")
     assert resp.status_code == 200
     assert resp.json()["partialSuccess"]["rejectedDataPoints"] == "1"
+
+
+async def test_metric_points_count_against_the_span_bucket(
+    sqlite_template: Path, tmp_path: Path
+) -> None:
+    """Security review: metrics are rate-limited by volume, not only per request."""
+    patch = ProjectPatch(span_rate=1, span_burst=2)
+    async with ingest_rig(sqlite_template, tmp_path, patch=patch) as r:
+        body = metrics_request().SerializeToString()  # 3 GenAI points > burst 2, full bucket
+        assert (await post(r, body, path="/v1/metrics")).status_code == 200
+        resp = await post(r, body, path="/v1/metrics")
+        assert_status(resp, 429, 8, "rate limit exceeded")
