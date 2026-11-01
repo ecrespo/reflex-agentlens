@@ -96,6 +96,8 @@ select = ["E", "F", "W", "I", "UP", "B", "S", "T20", "C4", "SIM", "PT", "ASYNC",
 "tests/**" = ["S101", "S603"]
 "src/reflex_agentlens/cli/**" = ["T20"]
 "scripts/**" = ["T20"]
+# Reflex state vars are declared with (copied-per-instance) mutable defaults.
+"src/reflex_agentlens/{pages,components}/**" = ["RUF012"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -148,6 +150,8 @@ exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError", "\\.\\.\\.$"]
 [tool.importlinter]
 root_package = "reflex_agentlens"
 include_external_packages = true
+# Typing-only imports (the lazy public API, service types in view models) are not runtime edges.
+exclude_type_checking_imports = true
 
 # Tech Design §5.1 import contracts (REQ-360.a, Constitution Art. 6, API §1.1).
 [[tool.importlinter.contracts]]
@@ -155,7 +159,7 @@ name = "Layers: UI > query > ingest/store > core"
 type = "layers"
 containers = ["reflex_agentlens"]
 layers = [
-    "pages : components : app : cli : _webapp",
+    "pages : components : app : cli : _webapp : views",
     "query",
     "ingest : store",
     "core",
@@ -163,15 +167,16 @@ layers = [
 exhaustive = false
 
 [[tool.importlinter.contracts]]
-name = "Core layers never import Reflex or the UI packages"
+name = "Core layers and view models never import Reflex or the UI packages"
 type = "forbidden"
 source_modules = [
     "reflex_agentlens.core",
     "reflex_agentlens.ingest",
     "reflex_agentlens.store",
     "reflex_agentlens.query",
+    "reflex_agentlens.views",
 ]
-forbidden_modules = ["reflex", "reflex_silverpoint_react", "reflex_mermaidjs"]
+forbidden_modules = ["reflex", "reflex_silverpoint_react", "reflex_mermaidjs", "reflex_agentlens.pages", "reflex_agentlens.components"]
 
 [[tool.importlinter.contracts]]
 name = "ingest does not import query"
@@ -196,5 +201,7 @@ unmatched_ignore_imports_alerting = "none"
 [[tool.importlinter.contracts]]
 name = "pages and components go through query, never store"
 type = "forbidden"
-source_modules = ["reflex_agentlens.pages", "reflex_agentlens.components"]
+source_modules = ["reflex_agentlens.pages", "reflex_agentlens.components", "reflex_agentlens.views"]
 forbidden_modules = ["reflex_agentlens.store"]
+# "Through query": indirect imports via query (DTO conversion) are the point; direct ones are not.
+allow_indirect_imports = true

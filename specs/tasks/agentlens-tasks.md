@@ -1294,7 +1294,7 @@ tests under `tests/unit/ui/` (view models, URL codecs, Mermaid text, sanitizers:
 - **REQ / design**: REQ-130.e, 150.a, 190.d, DD-017
 - **Depends on**: —
 - **Done**: token table test (every kind and status has a color; text pairs ≥ 4.5:1).
-- [ ]
+- [x] 2026-11-01 · PR #36
 
 ### P6-01.2 · Base state, event wrapper, inline states
 - **What**: `pages/_base.py`: `AgentlensState(rx.State)` (class name prefixed `agentlens_`), the
@@ -1305,7 +1305,7 @@ tests under `tests/unit/ui/` (view models, URL codecs, Mermaid text, sanitizers:
 - **Depends on**: P6-01.1
 - **Done**: unit tests of the wrapper's mapping (fake services raising each error class; the log
   line carries the class name only) and of the snippet text.
-- [ ]
+- [x] 2026-11-01 · PR #36
 
 ### P6-02.1 · Shared chrome and URL state
 - **What**: `components/chrome.py` Project, Source and time-range selectors (1 h, 24 h, 7 d,
@@ -1315,7 +1315,7 @@ tests under `tests/unit/ui/` (view models, URL codecs, Mermaid text, sanitizers:
 - **Depends on**: P6-01.2
 - **Done**: URL round-trip property test; selector options built from `list_projects` /
   `list_sources` for a restricted viewer show only allowed Projects.
-- [ ]
+- [x] 2026-11-01 · PR #36
 
 ### P6-03.1 · Public embedding API
 - **What**: lazy `reflex_agentlens.__init__` (`__getattr__` for `mount`, `standalone_app`,
@@ -1325,7 +1325,7 @@ tests under `tests/unit/ui/` (view models, URL codecs, Mermaid text, sanitizers:
 - **REQ / design**: REQ-190.a/b/c, Art. 7, API §7.1
 - **Depends on**: P6-01.2
 - **Done**: import-audit test green; `import reflex_agentlens` does not import `reflex`.
-- [ ]
+- [x] 2026-11-01 · PR #36
 
 ### P6-03.2 · Auth hook and `mount()`
 - **What**: auth-hook resolution per the design notes (A-12), redirect to `login_route` or the
@@ -1336,7 +1336,7 @@ tests under `tests/unit/ui/` (view models, URL codecs, Mermaid text, sanitizers:
 - **Done**: tests of the Delta `changes/2026-11-p6-ui-prep/` (page load never cached, event cache
   ≤ 30 s with an injected clock, no cross-token reuse); unauthenticated → no data; restricted
   viewer sees only its Projects; `mount` registers exactly `pages.ROUTES` under the prefix.
-- [ ]
+- [x] 2026-11-01 · PR #36
 
 ### P6-04.1 · Runs view model and filter bar
 - **What**: `pages/runs_vm.py`: `RunSummary` → rows with the REQ-145.a columns (status,
@@ -1692,6 +1692,7 @@ the matrix). No requirement is deferred at this point.
 | 2026-11-01 | P5-03.1, 03.2, 03.3, 03.4 | Done | PR #32; `cli/main.py` (argparse, every API §8.3 command, exit-code mapping, `--print-config`; `collect` port 4318 through the new `load_config(command_defaults=)` layer), store `count_purgeable` (API v1.4.3), `Jobs.purge(trigger=)`, `ingest/rederive.py` (current mapping + pricing in effect now; fresh golden spans re-derive to themselves), `app/server.py` `run_server` on Granian's embedded server (the runner enters the lifespan itself so startup errors keep their exit codes; SIGTERM → health 503, engine drain, HTTP stop) and `probe_ports` (exit 3). Runtime/CLI tests isolate PostgreSQL per database. `demo` exits 2 until P8-02 |
 | 2026-11-01 | P5-04.1, 04.2 | Done | PR #33; `app/auth.py` (`standalone_viewer` for none/password/proxy, signed session cookie), `app/login.py` (login/logout routes in `password` mode, Origin/Referer guard, same-origin `next`, throttle, form parsed in-house with an 8 KiB cap), CORS pinned to one origin in `serve`/`demo` |
 | 2026-11-01 | P5-05.1, 06.1, 07.1, 08.1 | Done | PR #34; graceful shutdown in-process through `run_server`'s stop event (in-flight exports 200, late 503, `/healthz` `shutting_down`; the SIGTERM → exit 0 path stays in the subprocess tests); rebuild racing late spans converges (second rebuild changes 0 Runs, views unchanged) on both backends; `core/telemetry.py` (Tech Design §7.2 metrics/spans with closed label sets, no-op recorder) + `app/selftelemetry.py` (private OTLP providers, loop check → exit 2, missing extra named, span status without exception messages); golden fixtures through `serve` and `collect` (PG) into twin Projects give identical responses and views (REQ-004.c). The OTLP HTTP exporter joins the dev group. **P5 gate**: every CLI command and every API §8.3 exit code (0–5) has an integration test; `collect` on PG and `serve` pass the health, shutdown and outage tests; 1,517 tests green on SQLite and PostgreSQL; `mypy --strict` clean; 6 import contracts kept |
+| 2026-11-01 | P6-01.1, 01.2, 02.1, 03.1, 03.2 | Done | PR #36; Tasks v1.5 and Delta `changes/2026-11-p6-ui-prep/` (A-12) merged as PR #35. Reflex-free view models in the new `reflex_agentlens.views` package (`guard`, `registry`, `chrome`, `snippets`, `tokens`) instead of `pages/_*` modules, because importing any `pages.*` module imports Reflex; new import contract (no Reflex, no UI packages in `views`). Contract 6 forbids direct `store` imports only (the `query` path is indirect by design); typing-only imports excluded. `pages/_base.py` (`AgentlensState`, `ui_event`, frame, inline states), `components/theme.py` + `chrome.py`, page frames per route, lazy `reflex_agentlens` API (`standalone_app` follows in P6-11), `app/mount.py`. Import audit in a clean subprocess; A-12 rule tested with an injected clock. Fix found on the way: a flaky P5 shutdown test now waits for five queued batches |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).
