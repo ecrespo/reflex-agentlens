@@ -7,9 +7,12 @@ Messages never echo request content (REQ-323).
 
 from __future__ import annotations
 
+from typing import Literal
+
 from reflex_agentlens.core.errors import AgentlensError
 
 __all__ = [
+    "AuthFailure",
     "BatchRejectedError",
     "DecodeError",
     "IngestFailure",
@@ -49,9 +52,18 @@ class BatchRejectedError(IngestFailure):
     message = "batch rejected"
 
 
+AuthFailure = Literal["missing", "malformed", "unknown", "revoked"]
+
+
 class Unauthenticated(IngestFailure):
+    """REQ-006.b. ``reason`` is for logs and metrics only; the client sees the fixed message."""
+
     http_status = 401
     message = "invalid api key"
+
+    def __init__(self, reason: AuthFailure = "unknown") -> None:
+        super().__init__()
+        self.reason: AuthFailure = reason
 
 
 class PayloadTooLarge(IngestFailure):
