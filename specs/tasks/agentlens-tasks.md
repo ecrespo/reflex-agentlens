@@ -739,7 +739,7 @@ first or in the same commit (Art. 8). Branches: `feat/P3-<nn>-<slug>` from `deve
 - **Depends on**: P3-03.1, P3-03.2, P3-04.1
 - **Done**: two conversation IDs that redact to the same text stay two Sessions; LangGraph and
   OpenInference graph fixtures; search document cap; `normalize_batch` is deterministic.
-- [ ]
+- [x] 2026-10-31 · PR #21
 
 ### P3-04.1 · Redaction presets and rules engine
 - **What**: `ingest/redaction/presets.py` (`secrets`, `email`, `phone`, `credit_card` with Luhn),
@@ -771,7 +771,7 @@ first or in the same commit (Art. 8). Branches: `feat/P3-<nn>-<slug>` from `deve
 - **Depends on**: P2-08.2
 - **Done**: CSV parses into valid `PricingEntry` rows (Decimal → nano-USD, no floats); bootstrap is
   idempotent; no network access at runtime (test with sockets blocked).
-- [ ]
+- [x] 2026-10-31 · PR #21
 
 ### P3-05.2 · Cost per LLMCall
 - **What**: `ingest/cost.py`: price each LLMCall with `core.pricing` against the engine's pricing
@@ -780,7 +780,7 @@ first or in the same commit (Art. 8). Branches: `feat/P3-<nn>-<slug>` from `deve
 - **Depends on**: P3-03.1, P3-05.1
 - **Done**: matching-order tests (response before request model, exact before glob); integer
   nano-USD arithmetic only.
-- [ ]
+- [x] 2026-10-31 · PR #21
 
 ### P3-06.1 · Store: `write_group` and `get_or_create_secret`
 - **What**: protocol + both backends: `write_group(batches)` with one SAVEPOINT per batch, data
@@ -1100,6 +1100,7 @@ the matrix). No requirement is deferred at this point.
 | 2026-10-31 | P3-02.1, 02.2, 04.1 | Done | PR #18; OTLP decode (protobuf/JSON, hex IDs), validation + `partialSuccess`; span drafts, truncation, classification; redaction presets (linear-time email), pattern/field rules, fail-closed timeouts, A-07 canary. Security review: `$b64`-shaped kvlists no longer bypass redaction/truncation |
 | 2026-10-31 | (fix) | Done | PR #19; Delta `changes/2026-10-saved-filter-scope/` → API v1.3.1: `delete_filter(project_id, filter_id)` (IDOR from a security review) |
 | 2026-10-31 | P3-03.1, 03.2, 04.2 | Done | PR #20; LLMCall/agent usage, ToolCall, Approval (vocabulary + PydanticAI deferral); hook (deep-copied view, validated result, class-only errors), content drop (`dropped_keys` incl. `event:<name>`), preview. **Deferred**: MCP elicitation (COULD): no attribute carries the user's answer |
+| 2026-10-31 | P3-03.3, 05.1, 05.2 | Done | PR #21; graph nodes (kind decided from attributes: LangGraph/OI chain nodes are `node`), Session key (A-08 HMAC), search document, `normalize_batch` in `normalize/pipeline.py` (lazy re-export: import cycle with the redaction engine); bundled pricing from litellm@187f936cb345 (651 entries, MIT checked, `NOTICE`), bootstrap, cost at the version in effect at call start. **Not done**: agent handoffs (`gen_ai.transfer.target.name`) are not derived into `explicit_parent_key` |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).
