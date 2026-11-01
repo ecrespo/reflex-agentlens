@@ -71,6 +71,7 @@ GEN_AI_CONVERSATION_ID: Final = "gen_ai.conversation.id"
 ERROR_TYPE: Final = "error.type"
 EXCEPTION_TYPE: Final = "exception.type"
 EXCEPTION_MESSAGE: Final = "exception.message"
+EXCEPTION_STACKTRACE: Final = "exception.stacktrace"
 
 # operation names (gen_ai.operation.name)
 OP_CHAT: Final = "chat"

@@ -975,7 +975,7 @@ from `develop`.
 - **Done**: contract tests on both backends: pagination walks every Run once in each sort; a
   viewer limited to one Project never sees another's Runs, facets or Sources; LLM-call messages
   equal the golden normalizer output.
-- [ ]
+- [x] 2026-10-31 · PR #28
 
 ### P4-02.2 · Trace tree and span drawer
 - **What**: `query/tree.py`: DFS order with siblings by start, missing-parent placeholders,
@@ -987,7 +987,7 @@ from `develop`.
 - **Done**: shuffled-arrival trees equal the in-order tree; orphans sit under one placeholder per
   missing parent; subtree totals equal the sum of LLM calls below; a purged or foreign trace
   raises `NotFound`.
-- [ ]
+- [x] 2026-10-31 · PR #28
 
 ### P4-02.3 · Sessions
 - **What**: `list_sessions` (filter, sort, signed cursor) and `get_session` (chronological Runs
@@ -995,7 +995,7 @@ from `develop`.
 - **REQ / design**: REQ-105.a/b, 160.a (data)
 - **Depends on**: P4-02.1
 - **Done**: contract tests on both backends for every sort and the cumulative columns.
-- [ ]
+- [x] 2026-10-31 · PR #28
 
 ### P4-03.1 · Dashboard aggregates and storage status
 - **What**: `dashboard(viewer, scope)`: every REQ-106 aggregate plus REQ-107 metric tokens,
@@ -1247,6 +1247,7 @@ the matrix). No requirement is deferred at this point.
 | 2026-10-31 | P3-09.1, 10.1, 11.1 | Done | PR #24; `ingest/core.py` `IngestCore` per engine run (admit → decode → span bucket → normalize → commit; metric writes) reached from HTTP through the new `IngestEngine.call`, `build_engine` wires core, jobs, auth-cache watcher and gRPC; `ingest/http.py` Starlette routes (`/v1/logs` 404); `ingest/grpc.py` (LogsService not registered → UNIMPLEMENTED; RetryInfo only on retryable codes); `ingest/metrics.py`. `google.rpc.Status`/`RetryInfo` are hand-encoded (`ingest/status.py`) instead of adding googleapis-common-protos. Security review: metric attributes now get the span redaction/hook/truncation and GenAI points count against the span bucket. Dev group gained the OTLP gRPC exporter (same pins as `bench`). **Not done**: the API §3.3 demo-mode 403 row (demo mode comes with P4-06/P8-02) |
 | 2026-10-31 | P3-12.1, 12.2, 13.1, 13.2 | Done | PR #25; `tests/property/` (OTLP → normalize → `write_group` invariance under permutation, splits, grouping and duplicates, both backends), `tests/golden/` (8 OTLP/JSON scenarios, `AGENTLENS_REGEN_GOLDEN=1`, `MAPPING_VERSION` guard), `tests/integration/` (test-only Granian app with the engine in its lifespan, real HTTP/gRPC ports, PG outage through a cuttable TCP proxy with recovery < 10 s, A-04 Project deleted mid-ingest: 400 on SQLite / 401 on PG after NOTIFY, SIGKILL after ack, revocation ≤ 5 s across two processes, two collectors). Fix: a full queue answers 503 `overloaded` with `overload_retry_after`. Golden review: on a span with both dialects the response model falls back to `llm.model_name` (per-field precedence, Tech Design §5.3). **P3 gate**: 1196 passed (CI hypothesis profile, both backends), ingest + store coverage 96 %, mypy --strict clean, 6 import contracts kept |
 | 2026-10-31 | P4-01.1, 01.2, 01.3 | Done | PR #27; `query/dto.py` (API v1.4 §6.7), `query/convert.py`, `query/kinds.py` (§6.8), `query/timeexpr.py`, `query/filters.py` (Runs URL grammar, round-trip property), `query/scope.py` (viewer scope; an unknown Project looks forbidden to an allowed-list viewer), `query/cursor.py` (signed, sort-bound). URL values are kept verbatim (no trimming) so the round trip is exact; unknown URL parameters are ignored |
+| 2026-10-31 | P4-02.1, 02.2, 02.3 | Done | PR #28; `query/service.py` `QueryService(store, cursor_key, clock_ns)`: runs, traces (paged DFS tree, totals, LLM-call table), LLM messages, span drawer (`get_span_detail`: messages, tool I/O, `ErrorInfo`, raw), sessions, facets, selectors, `get_project`; `query/tree.py` iterative and cycle-safe (a parent cycle is broken at its earliest span, flagged `missing_parent`). `core.semconv` gained `EXCEPTION_STACKTRACE`. `get_trace` → `graph=None` until P4-04.1 |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).
