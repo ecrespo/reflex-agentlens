@@ -357,3 +357,66 @@ async def test_settings_require_admin_and_demo_is_read_only_req_174_231b(
     await state.create_key({"label": "x"})
     assert state.reveal.plaintext == ""
     assert "demo" in state.action_error
+
+
+@pytest.mark.usefixtures("wired")
+async def test_settings_pricing_editor_and_csv_round_trip_req_171(
+    db: ContractDB, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P6-10.2: edit and save a new version, validation stops a bad save, the exported CSV
+    imports back as a version with the same entries, older versions are read-only."""
+    from reflex_agentlens.views.pricing import PriceRow
+
+    await setup(db, tmp_path)
+    state = _settings(monkeypatch, "tab=pricing&project=shop")
+    await state.load_settings()
+    assert state.tab == "pricing"
+    assert state.error_kind == ""
+    first = state.price_current
+    assert state.price_viewing == first
+    assert state.unpriced  # the dataset's models have no price yet
+
+    model = state.unpriced[0].model
+    state.add_unpriced(state.unpriced[0].provider, model)
+    index = len(state.price_rows) - 1
+    assert state.price_rows[index].pattern == model
+    state.set_price_cell(index, "input", "abc")
+    await state.save_pricing({"note": ""})
+    assert state.price_current == first  # nothing saved
+    assert state.price_errors == [
+        f"Row {index + 1}: Input $/1M must be a decimal number such as 2.50.",
+        f"Row {index + 1}: Output $/1M is required.",
+    ]
+    state.set_price_cell(index, "input", "1.5")
+    state.set_price_cell(index, "output", "3")
+    state.set_price_cell(index, "nope", "3")  # unknown columns are ignored
+    await state.save_pricing({"note": "dataset model"})
+    assert (state.action_error, state.price_errors) == ("", [])
+    assert state.price_current == first + 1
+    assert PriceRow(pattern=model, provider=state.price_rows[index].provider, input="1.5",
+                    output="3") in state.price_rows  # fmt: skip
+    assert model in {u.model for u in state.unpriced}  # stored calls keep their cost
+
+    spec = await state.export_pricing()
+    _, admin = reg_module.services()
+    exported = await admin.export_pricing_csv(dto.Viewer("ana", "Ana", is_admin=True))
+    assert spec is not None
+    assert "agentlens-pricing-v" in str(spec)
+    saved_rows = list(state.price_rows)
+    await state.import_pricing({"csv": exported})
+    assert state.action_error == ""
+    assert state.price_current == first + 2
+    assert state.price_rows == saved_rows  # the round trip keeps every entry
+    await state.import_pricing({"csv": "not,a,pricing,csv\n"})
+    assert state.action_error.startswith("Invalid ")
+    assert state.price_current == first + 2
+
+    await state.pick_price_version(str(first + 1))  # the version saved from the editor
+    assert state.price_viewing == first + 1
+    await state.save_pricing({})
+    assert "current version" in state.action_error
+
+    await state.recompute({"from": "now-3650d"})
+    assert state.action_error == ""
+    assert "LLM calls re-priced" in state.action_done
+    assert model not in {u.model for u in state.unpriced}

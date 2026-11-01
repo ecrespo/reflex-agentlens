@@ -20,6 +20,7 @@ from reflex.event import EventSpec
 
 from reflex_agentlens.pages._base import AgentlensState, page_frame, ui_event
 from reflex_agentlens.query.dto import Viewer
+from reflex_agentlens.views import pricing as pv
 from reflex_agentlens.views import settings as vm
 from reflex_agentlens.views.registry import registry, services
 
@@ -45,6 +46,14 @@ class SettingsState(AgentlensState):
     delete_open: bool = False
     new_name: str = ""
     new_slug: str = ""
+    # pricing (P6-10.2)
+    price_rows: list[pv.PriceRow] = []
+    price_errors: list[str] = []
+    price_current: int = 0
+    price_viewing: int = 0
+    price_label: str = ""
+    price_versions: list[dict[str, str]] = []
+    unpriced: list[pv.UnpricedRow] = []
 
     # ── helpers ──────────────────────────────────────────────────────────────────────────────
 
@@ -83,12 +92,31 @@ class SettingsState(AgentlensState):
         self.project_name = chosen.name if chosen else ""
 
     async def _load_tab(self, viewer: Viewer) -> None:
-        if not self.project_id:
-            self.keys = []
-            return
         _, admin = services()
-        if self.tab == "projects":
-            self.keys = vm.key_rows(await admin.list_api_keys(viewer, self.project_id))
+        if self.tab == "pricing":  # global, not per Project
+            await self._load_pricing(viewer, None)
+        elif self.tab == "projects":
+            self.keys = (
+                vm.key_rows(await admin.list_api_keys(viewer, self.project_id))
+                if self.project_id
+                else []
+            )
+
+    async def _load_pricing(self, viewer: Viewer, version: int | None) -> None:
+        _, admin = services()
+        versions = await admin.list_pricing_versions(viewer)
+        self.unpriced = pv.unpriced_rows(await admin.list_unpriced_models(viewer))
+        self.price_errors = []
+        if not versions:  # nothing saved yet: the first save creates version 1
+            self.price_current = self.price_viewing = 0
+            self.price_label, self.price_versions, self.price_rows = "No prices yet.", [], []
+            return
+        table = await admin.get_pricing(viewer, version)
+        self.price_current, self.price_viewing = versions[0].version, table.info.version
+        self.price_label = pv.version_label(table.info)
+        self.price_versions = [{"value": str(v.version), "label": pv.version_label(v)}
+                               for v in versions]  # fmt: skip
+        self.price_rows = pv.price_rows(table)
 
     # ── events ───────────────────────────────────────────────────────────────────────────────
 
@@ -182,6 +210,94 @@ class SettingsState(AgentlensState):
     def close_reveal(self) -> None:
         """The plaintext leaves the state for good (REQ-170.b)."""
         self.reveal = vm.EMPTY_REVEAL
+
+    # ── pricing (REQ-060.c, 171) ─────────────────────────────────────────────────────────────
+
+    @ui_event
+    async def pick_price_version(self, viewer: Viewer, version: str) -> None:
+        """Older versions are shown read-only; edits always start from the current one."""
+        await self._load_pricing(viewer, int(version) if version.isdigit() else None)
+
+    @rx.event
+    def set_price_cell(self, index: int, field: str, value: str) -> None:
+        if field not in pv.COLUMNS or not 0 <= index < len(self.price_rows):
+            return
+        rows = list(self.price_rows)
+        rows[index] = rows[index].model_copy(update={field: value[:200]})
+        self.price_rows = rows
+
+    @rx.event
+    def add_price_row(self) -> None:
+        self.price_rows = [*self.price_rows, pv.PriceRow()]
+
+    @rx.event
+    def remove_price_row(self, index: int) -> None:
+        self.price_rows = [r for i, r in enumerate(self.price_rows) if i != index]
+
+    @rx.event
+    def add_unpriced(self, provider: str, model: str) -> None:
+        """REQ-171.b: one click adds an exact entry to fill in, then save."""
+        self.price_rows = [*self.price_rows, pv.PriceRow(provider=provider, pattern=model)]
+        self.unpriced = [u for u in self.unpriced if (u.provider, u.model) != (provider, model)]
+
+    @ui_event
+    async def save_pricing(self, viewer: Viewer, data: dict[str, Any]) -> None:
+        """REQ-060.c: saved as a new version; earlier versions are unchanged."""
+        if self.price_viewing != self.price_current:
+            self.action_error = "Switch to the current version to edit prices."
+            return
+        entries, errors = pv.entries_from_rows(self.price_rows)
+        self.price_errors = errors
+        if errors:
+            self.action_error = "Fix the highlighted prices before saving."
+            return
+        note = str(data.get("note", "")).strip() or None
+        _, admin = services()
+        saved = await self._act(
+            viewer, lambda: admin.save_pricing(viewer, entries, note), "Prices saved."
+        )
+        if saved is not None:
+            self.action_done = (
+                f"Saved as version {saved.info.version}. Calls already stored keep their cost "
+                "until you recompute them."
+            )
+            await self._load_pricing(viewer, None)
+
+    @ui_event
+    async def export_pricing(self, viewer: Viewer) -> EventSpec:
+        """REQ-171.c: the current version as CSV (reading, so allowed in demo mode)."""
+        _, admin = services()
+        text = await admin.export_pricing_csv(viewer)
+        return rx.download(data=text, filename=pv.csv_filename(self.price_current))
+
+    @ui_event
+    async def import_pricing(self, viewer: Viewer, data: dict[str, Any]) -> None:
+        """REQ-171.c: a pasted CSV becomes a new version; errors name the line."""
+        text = str(data.get("csv", ""))
+        if not text.strip():
+            self.action_error = "Paste a pricing CSV first."
+            return
+        _, admin = services()
+        saved = await self._act(
+            viewer, lambda: admin.import_pricing_csv(viewer, text), "Prices imported."
+        )
+        if saved is not None:
+            self.action_done = f"Imported as version {saved.info.version}."
+            await self._load_pricing(viewer, None)
+
+    @ui_event
+    async def recompute(self, viewer: Viewer, data: dict[str, Any]) -> None:
+        """REQ-062: re-price the selected Project's LLM calls with the current prices."""
+        since = str(data.get("from", "")).strip() or "now-7d"
+        _, admin = services()
+        project_id = self.project_id
+        count = await self._act(
+            viewer, lambda: admin.recompute_costs(viewer, project_id, since), "Costs recomputed."
+        )
+        if count is not None:
+            self.action_done = f"{count:,} LLM calls re-priced in {self.project_name}."
+            if self.tab == "pricing":
+                self.unpriced = pv.unpriced_rows(await admin.list_unpriced_models(viewer))
 
     @ui_event
     async def revoke_key(self, viewer: Viewer, key_id: str) -> None:
@@ -340,6 +456,108 @@ def projects_tab() -> rx.Component:
     )  # fmt: skip
 
 
+def _price_cell(row: Any, index: Any, field: str) -> rx.Component:
+    return rx.el.td(
+        rx.el.input(
+            value=row[field],
+            on_change=lambda v: S.set_price_cell(index, field, v),  # type: ignore[operator]
+            read_only=~S.can_mutate | (S.price_viewing != S.price_current),
+            aria_label=pv.COLUMNS[field],
+            input_mode="decimal" if field not in ("provider", "pattern") else "text",
+            size=10 if field not in ("provider", "pattern") else 24,
+        )
+    )
+
+
+def _price_row(row: Any, index: Any) -> rx.Component:
+    editable = S.can_mutate & (S.price_viewing == S.price_current)
+    return rx.el.tr(
+        *[_price_cell(row, index, f) for f in pv.COLUMNS],
+        rx.el.td(rx.cond(editable, rx.el.button(
+            "Remove", type="button",
+            on_click=S.remove_price_row(index)))),  # type: ignore[operator]
+    )  # fmt: skip
+
+
+def _unpriced_row(u: Any) -> rx.Component:
+    return rx.el.tr(
+        rx.el.td(u.provider), rx.el.td(rx.el.code(u.model)), rx.el.td(u.calls),
+        rx.el.td(u.last_seen),
+        rx.el.td(rx.cond(S.can_mutate & (S.price_viewing == S.price_current),
+                         rx.el.button("Add price", type="button",
+                                      on_click=S.add_unpriced(u.provider, u.model)))),  # type: ignore[operator]
+    )  # fmt: skip
+
+
+def pricing_tab() -> rx.Component:
+    editable = S.can_mutate & (S.price_viewing == S.price_current)
+    return rx.fragment(
+        rx.el.label(
+            rx.el.span("Version"),
+            rx.el.select(
+                rx.foreach(S.price_versions, lambda v: rx.el.option(v["label"], value=v["value"])),
+                value=S.price_viewing.to_string(),  # type: ignore[attr-defined]
+                on_change=S.pick_price_version,
+            ),
+        ),
+        rx.el.p(S.price_label),
+        rx.cond(S.price_viewing != S.price_current,
+                rx.el.p("An earlier version, read-only. Prices of past calls keep the version "
+                        "they were computed with.", role="status")),
+        rx.cond(S.price_errors.length() > 0,  # type: ignore[attr-defined]
+                rx.el.ul(rx.foreach(S.price_errors, rx.el.li), role="alert",
+                         class_name="agentlens-error")),
+        rx.el.form(
+            rx.el.table(
+                rx.el.caption("Prices in USD per 1M tokens; * in a pattern matches any text."),
+                rx.el.thead(rx.el.tr(*[rx.el.th(h, scope="col") for h in pv.COLUMNS.values()],
+                                     rx.el.th("", scope="col"))),
+                rx.el.tbody(rx.foreach(S.price_rows, _price_row)),
+                class_name="agentlens-table",
+            ),
+            rx.cond(editable, rx.fragment(
+                rx.el.button("Add entry", type="button", on_click=S.add_price_row),
+                rx.el.label(rx.el.span("Note (optional)"),
+                            rx.el.input(name="note", max_length=500)),
+                rx.el.button("Save as new version", type="submit"),
+            )),
+            on_submit=S.save_pricing,
+            reset_on_submit=True,
+        ),
+        rx.el.section(
+            rx.el.h3("Unpriced models"),
+            rx.cond(S.unpriced.length() > 0,  # type: ignore[attr-defined]
+                    rx.el.table(
+                        rx.el.thead(rx.el.tr(*[rx.el.th(h, scope="col") for h in
+                                               ("Provider", "Model", "Calls", "Last seen", "")])),
+                        rx.el.tbody(rx.foreach(S.unpriced, _unpriced_row)),
+                        class_name="agentlens-table"),
+                    rx.el.p("Every model seen so far has a price.")),
+        ),
+        rx.el.section(
+            rx.el.h3("CSV"),
+            rx.el.button("Export current version", type="button", on_click=S.export_pricing),
+            rx.cond(S.can_mutate, rx.el.form(
+                rx.el.label(rx.el.span("Paste a pricing CSV to import it as a new version"),
+                            rx.el.textarea(name="csv", rows=6)),
+                rx.el.button("Import CSV", type="submit"),
+                on_submit=S.import_pricing, reset_on_submit=True,
+            )),
+        ),
+        rx.cond(S.can_mutate & (S.project_id != ""), rx.el.section(
+            rx.el.h3("Recompute costs"),
+            rx.el.p("Re-price the LLM calls of ", rx.el.strong(S.project_name),
+                    " with the current prices."),
+            rx.el.form(
+                rx.el.label(rx.el.span("Since"),
+                            rx.el.input(name="from", default_value="now-7d", max_length=40)),
+                rx.el.button("Recompute", type="submit"),
+                on_submit=S.recompute, reset_on_submit=False,
+            ),
+        )),
+    )  # fmt: skip
+
+
 def requires_admin() -> rx.Component:
     return rx.el.div(
         rx.el.h2("Requires admin"),
@@ -355,7 +573,7 @@ def body() -> rx.Component:
             _tabs(),
             _notices(),
             rx.cond(S.projects.length() > 0, _project_picker()),  # type: ignore[attr-defined]
-            rx.match(S.tab, ("projects", projects_tab()), projects_tab()),
+            rx.match(S.tab, ("pricing", pricing_tab()), projects_tab()),
         ),
         rx.cond(S.loaded, requires_admin()),
     )
