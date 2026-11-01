@@ -717,7 +717,7 @@ first or in the same commit (Art. 8). Branches: `feat/P3-<nn>-<slug>` from `deve
 - **Depends on**: P3-01.3, P3-02.2
 - **Done**: fixtures for spec, OpenInference and legacy LLM spans; agent-span usage only counts
   when the trace has no LLM spans (DD-012 test).
-- [ ]
+- [x] 2026-10-31 · PR #20
 
 ### P3-03.2 · ToolCall and Approval derivation
 - **What**: `normalize/tool.py` (name, call ID, type, args, result, error) and
@@ -727,7 +727,7 @@ first or in the same commit (Art. 8). Branches: `feat/P3-<nn>-<slug>` from `deve
 - **Depends on**: P3-02.2
 - **Done**: one fixture per vocabulary and decision value; tool errors from status and
   `error.type`; approval linked to its tool call.
-- [ ]
+- [x] 2026-10-31 · PR #20
 
 ### P3-03.3 · GraphNode, Session key, search document, pipeline
 - **What**: `normalize/graph.py` (spec agent/workflow spans, OpenInference `graph.node.*`, LangGraph
@@ -761,7 +761,7 @@ first or in the same commit (Art. 8). Branches: `feat/P3-<nn>-<slug>` from `deve
 - **Depends on**: P3-04.1
 - **Done**: hook error rejects only that span; content-off Project stores no content key; preview
   equals what ingest would store.
-- [ ]
+- [x] 2026-10-31 · PR #20
 
 ### P3-05.1 · Bundled pricing data
 - **What**: `scripts/update_pricing.py` (dev-time: LiteLLM JSON → `data/pricing.csv`, license
@@ -1098,6 +1098,8 @@ the matrix). No requirement is deferred at this point.
 | 2026-10-31 | P3 prep | Done | PR #16; Delta `changes/2026-10-p3-ingest-prep/` (A-04, A-07, A-08, A-17) folded; P3 detailed |
 | 2026-10-31 | P3-01.1, 01.2, 01.3 | Done | PR #17; `SEMCONV_GENAI_COMMIT` = `6f98aef` (genai repo `main`, no release; closes Q-T2); mapping table + classification + dialects; messages normalizer (5 forms). Security review: JSON `RecursionError`, bounded list indices, content-drop prefixes widened beyond Tech Design §5.3 (fold later) |
 | 2026-10-31 | P3-02.1, 02.2, 04.1 | Done | PR #18; OTLP decode (protobuf/JSON, hex IDs), validation + `partialSuccess`; span drafts, truncation, classification; redaction presets (linear-time email), pattern/field rules, fail-closed timeouts, A-07 canary. Security review: `$b64`-shaped kvlists no longer bypass redaction/truncation |
+| 2026-10-31 | (fix) | Done | PR #19; Delta `changes/2026-10-saved-filter-scope/` → API v1.3.1: `delete_filter(project_id, filter_id)` (IDOR from a security review) |
+| 2026-10-31 | P3-03.1, 03.2, 04.2 | Done | PR #20; LLMCall/agent usage, ToolCall, Approval (vocabulary + PydanticAI deferral); hook (deep-copied view, validated result, class-only errors), content drop (`dropped_keys` incl. `event:<name>`), preview. **Deferred**: MCP elicitation (COULD): no attribute carries the user's answer |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).
