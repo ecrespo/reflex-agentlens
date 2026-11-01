@@ -2,7 +2,8 @@
 
 - Hypothesis profiles: ``ci`` (more examples, derandomized, no deadline) and ``dev`` (fast).
   Selected with ``HYPOTHESIS_PROFILE``; defaults to ``dev``.
-- Tests marked ``pg`` are skipped unless ``AGENTLENS_TEST_PG_URL`` is set.
+- Tests marked ``pg`` are skipped unless ``AGENTLENS_TEST_PG_URL`` is set; tests marked ``smoke``
+  (browser, built frontend) unless ``AGENTLENS_SMOKE=1`` (the CI ``smoke`` job).
 - Database fixtures: ``sqlite_engine`` (in-memory, foreign keys on) and ``pg_engine`` (a fresh
   schema per test, dropped afterwards).
 """
@@ -25,13 +26,17 @@ settings.load_profile(os.environ.get("HYPOTHESIS_PROFILE", "dev"))
 PG_URL_ENV = "AGENTLENS_TEST_PG_URL"
 
 
+SMOKE_ENV = "AGENTLENS_SMOKE"
+
+
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    if os.environ.get(PG_URL_ENV):
-        return
     skip_pg = pytest.mark.skip(reason=f"{PG_URL_ENV} is not set")
+    skip_smoke = pytest.mark.skip(reason=f"browser smoke test: set {SMOKE_ENV}=1")
     for item in items:
-        if "pg" in item.keywords:
+        if "pg" in item.keywords and not os.environ.get(PG_URL_ENV):
             item.add_marker(skip_pg)
+        if "smoke" in item.keywords and os.environ.get(SMOKE_ENV) != "1":
+            item.add_marker(skip_smoke)
 
 
 @pytest.fixture

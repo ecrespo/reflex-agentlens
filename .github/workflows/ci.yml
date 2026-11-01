@@ -114,10 +114,12 @@ jobs:
       - name: pytest (PostgreSQL-backed tests)
         run: uv run pytest -m pg
 
-  standalone:
-    # P6-11.2 (DD-002): export the frontend with Bun, then boot `serve` on it and check `/`.
-    name: standalone (built frontend)
+  smoke:
+    # P6-11.2 / P6-12.1 (DD-002, REQ-363): export the frontend with Bun, boot `serve` on it, then
+    # drive the standalone app and a host app that mounts agentlens in Chromium.
+    name: smoke (built frontend, Chromium)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -132,7 +134,12 @@ jobs:
       - run: uv sync --frozen
       - name: export the frontend
         run: uv run python -m reflex_agentlens._webapp.build
-      - name: serve answers / with the CSP
+      - name: install Chromium
+        run: uv run playwright install --with-deps chromium
+      - name: serve with the built frontend, then the browser smoke suite
         env:
           AGENTLENS_REQUIRE_FRONTEND: "1"
-        run: uv run pytest tests/integration/cli/test_standalone_serve.py -p no:randomly -v
+          AGENTLENS_SMOKE: "1"
+        run: >-
+          uv run pytest -p no:randomly -v
+          tests/integration/cli/test_standalone_serve.py tests/smoke
