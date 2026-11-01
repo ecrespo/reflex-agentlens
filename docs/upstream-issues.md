@@ -34,9 +34,9 @@ but crossovers and the trend of each series are hard to read.
 
 ```python
 sp.line_chart(
-    data=rows,                       # [{"bucket": "10:00", "gpt-4o": 1200, "claude": 800}, …]
+    data=rows,  # [{"bucket": "10:00", "gpt-4o": 1200, "claude": 800}, …]
     x_key="bucket",
-    keys=["gpt-4o", "claude", "o1"], # one series each; colours from the palette's series ramp
+    keys=["gpt-4o", "claude", "o1"],  # one series each; colours from the palette's series ramp
     names={"o1": "o1 (reasoning)"},  # optional display names, as on stacked_bar_chart
     connect_nulls=False,
 )
@@ -67,7 +67,11 @@ the box and the whiskers.
 sp.box_plot_chart(
     data=[{"op": "chat", "p5": 120, "p25": 300, "p50": 410, "p75": 700, "p95": 1900}],
     group_key="op",
-    low_key="p5", q1_key="p25", median_key="p50", q3_key="p75", high_key="p95",
+    low_key="p5",
+    q1_key="p25",
+    median_key="p50",
+    q3_key="p75",
+    high_key="p95",
     # outliers: not drawn in summary mode
 )
 ```
@@ -94,10 +98,10 @@ ranges. `interval_chart` has `axis="date"`, but it only reads whole ISO days in 
 
 ```python
 sp.line_chart(
-    data=rows,              # x values: epoch milliseconds or ISO-8601 timestamps
+    data=rows,  # x values: epoch milliseconds or ISO-8601 timestamps
     x_key="ts",
-    axis="time",            # proportional spacing; ticks chosen for the domain
-    time_zone="UTC",        # or an IANA name; labels via `locale`
+    axis="time",  # proportional spacing; ticks chosen for the domain
+    time_zone="UTC",  # or an IANA name; labels via `locale`
     domain=(start_ms, end_ms),  # optional: show the requested range even when empty
 )
 ```
@@ -125,14 +129,17 @@ DD-017 records this as a deliberate interpretation of Constitution Art. 7.
 
 ```python
 sp.waterfall_chart(
-    data=spans,             # [{"id", "parent", "name", "start_ms", "end_ms", "kind", "status"}]
-    id_key="id", parent_key="parent", label_key="name",
-    start_key="start_ms", end_key="end_ms",
-    color_key="kind",       # mapped through the palette
-    collapsed=[...],        # controlled list of collapsed ids
+    data=spans,  # [{"id", "parent", "name", "start_ms", "end_ms", "kind", "status"}]
+    id_key="id",
+    parent_key="parent",
+    label_key="name",
+    start_key="start_ms",
+    end_key="end_ms",
+    color_key="kind",  # mapped through the palette
+    collapsed=[...],  # controlled list of collapsed ids
     selected="span-id",
-    on_select=State.pick,   # returns the row id
-    virtualize=True,        # thousands of rows
+    on_select=State.pick,  # returns the row id
+    virtualize=True,  # thousands of rows
 )
 ```
 
