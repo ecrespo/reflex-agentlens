@@ -62,7 +62,8 @@ def test_req_320a_verification_accepts_the_key_and_rejects_others() -> None:
     stored = security.hash_secret(key.secret)
     assert security.verify_secret(key.secret, stored)
     assert not security.verify_secret(security.generate_api_key().secret, stored)
-    assert not security.verify_secret(key.secret[:-1] + "x", stored)
+    last = "y" if key.secret.endswith("x") else "x"  # always a different final character
+    assert not security.verify_secret(key.secret[:-1] + last, stored)
 
 
 def test_req_320a_same_secret_different_salt_different_hash() -> None:
