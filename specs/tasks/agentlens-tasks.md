@@ -1096,7 +1096,7 @@ from `develop`.
 - **Depends on**: —
 - **Done**: unit tests for each URL scheme, the data-dir default, the SQLite `collect` refusal,
   loopback detection (IPv4, IPv6, `localhost`) and the warning.
-- [ ]
+- [x] 2026-11-01 · PR #31
 
 ### P5-01.2 · Health routes and the `collect` app
 - **What**: `app/routes.py` `Health` (shutting-down flag, engine readiness, cached DB ping and
@@ -1109,7 +1109,7 @@ from `develop`.
 - **Done**: `/healthz` 200 and 503 while shutting down; `/readyz` 503 with the failing check named
   when the DB is down, the schema is not current or ingest is not ready; bodies contain no
   version or config value.
-- [ ]
+- [x] 2026-11-01 · PR #31
 
 ### P5-02.1 · Lifespan: migrations, pricing seed, engine
 - **What**: `app/lifespan.py` `Runtime(cfg, mode)` async context manager in the startup order of
@@ -1122,7 +1122,7 @@ from `develop`.
 - **Done**: an empty DB is migrated and seeded; auto-migrate off + outdated → 4 with the hint;
   newer schema → 4; unreachable DB → `StorageUnavailable`; the engine is ready after enter and
   stopped after exit, on both backends.
-- [ ]
+- [x] 2026-11-01 · PR #31
 
 ### P5-02.2 · First-run bootstrap and the session secret
 - **What**: `app/bootstrap.py`: on an empty Projects table `serve` creates Project `default` and
@@ -1136,7 +1136,7 @@ from `develop`.
 - **Done**: TTY and non-TTY paths (file mode 0600, key absent from captured logs); the
   configured key authenticates and appears in no output; a second start creates nothing; the
   secret file is reused across starts.
-- [ ]
+- [x] 2026-11-01 · PR #31
 
 ### P5-03.1 · CLI parser, configuration and exit codes
 - **What**: `cli/main.py` with `argparse`: global `--config`; commands and options of API §8.3
@@ -1447,6 +1447,7 @@ the matrix). No requirement is deferred at this point.
 | 2026-10-31 | P4-02.1, 02.2, 02.3 | Done | PR #28; `query/service.py` `QueryService(store, cursor_key, clock_ns)`: runs, traces (paged DFS tree, totals, LLM-call table), LLM messages, span drawer (`get_span_detail`: messages, tool I/O, `ErrorInfo`, raw), sessions, facets, selectors, `get_project`; `query/tree.py` iterative and cycle-safe (a parent cycle is broken at its earliest span, flagged `missing_parent`). `core.semconv` gained `EXCEPTION_STACKTRACE`. `get_trace` → `graph=None` until P4-04.1 |
 | 2026-10-31 | P4-03.1, 04.1 | Done | PR #29; `QueryService.dashboard` (nine aggregates via `asyncio.gather`, failing panels listed in `failed`, all failing → `StorageUnavailable`), `storage_status` (full-scope viewers only), `query/graph.py` (retries merged, approvals mark `interrupted`, collapse by node path above 150, LLM/tool fallback), `get_graph(full=)`. API v1.4.1 records these three details |
 | 2026-11-01 | P4-05.1, 05.2, 06.1 | Done | PR #30; `query/admin.py` `AdminService` (admin gating, Projects, API keys with plaintext only in `CreatedApiKey`, pricing versions + CSV via `store/pricing_csv.py`, unpriced models, recompute, redaction rules validated at save, preview, saved filters, demo-mode guard); `QueryService.subscribe` coalescing. Store addition `get_pricing_version` (API v1.4.2). Fix: the adversarial redaction sample was 32 KiB, not 64 KiB, and let `(a+)+$` pass the budget intermittently. **P4 gate**: `query` coverage 91-98 % per module (≥ 85 %), `mypy --strict` clean, 6 import contracts kept, 1,382 tests green on SQLite and PostgreSQL |
+| 2026-11-01 | P5-01.1, 01.2, 02.1, 02.2 | Done | PR #31; Tasks v1.4 (P5 detailed); `app/backend.py` (URL → backend, `collect` refuses SQLite), `app/policy.py` (non-loopback HTTP bind needs `auth.mode`; gRPC carries ingest only), `app/routes.py` (`Health` with a 1 s probe cache), `app/lifespan.py` `runtime()` (startup order of the P5 design notes; the ingest-loop backend shares the serving backend's change feed and origin ID), `app/bootstrap.py` (default Project + key, TTY banner or 0600 file, hashed configured key, session secret file), `app/server.py` `build_app`. An unusable SQLite path is `StorageUnavailable` (exit 5) |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).
