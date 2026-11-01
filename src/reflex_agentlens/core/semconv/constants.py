@@ -32,6 +32,7 @@ GEN_AI_PROVIDER_NAME: Final = "gen_ai.provider.name"
 GEN_AI_SYSTEM: Final = "gen_ai.system"  # deprecated name of the provider
 GEN_AI_REQUEST_MODEL: Final = "gen_ai.request.model"
 GEN_AI_RESPONSE_MODEL: Final = "gen_ai.response.model"
+GEN_AI_TOKEN_TYPE: Final = "gen_ai.token.type"  # metric attribute (legacy token usage)
 GEN_AI_USAGE_INPUT_TOKENS: Final = "gen_ai.usage.input_tokens"
 GEN_AI_USAGE_OUTPUT_TOKENS: Final = "gen_ai.usage.output_tokens"
 GEN_AI_USAGE_PROMPT_TOKENS: Final = "gen_ai.usage.prompt_tokens"  # deprecated
