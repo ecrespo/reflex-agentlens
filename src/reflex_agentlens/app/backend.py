@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from reflex_agentlens.core.config import AgentlensConfig
-from reflex_agentlens.core.errors import ConfigError
+from reflex_agentlens.core.errors import ConfigError, StorageUnavailable
 from reflex_agentlens.store.postgres.backend import PostgresBackend
 from reflex_agentlens.store.sqlite.backend import SqliteBackend
 
@@ -63,7 +63,7 @@ def make_backend(cfg: AgentlensConfig, **overrides: Any) -> Backend:
             return SqliteBackend.from_url(url, **kwargs)
         except ValueError as exc:
             raise ConfigError("database.url", _CONFIG, str(exc)) from None
-    return PostgresBackend(url, pool_size=cfg.database.pool_size, **kwargs)
+    return PostgresBackend(url, **{"pool_size": cfg.database.pool_size, **kwargs})
 
 
 async def open_backend(cfg: AgentlensConfig, *, listen: bool = False, **overrides: Any) -> Backend:
@@ -72,7 +72,10 @@ async def open_backend(cfg: AgentlensConfig, *, listen: bool = False, **override
     Raises ``StorageUnavailable`` when the database cannot be reached (exit 5 at startup).
     """
     backend = make_backend(cfg, **overrides)
-    await backend.open()
+    try:
+        await backend.open()
+    except OSError as exc:  # SQLite: the directory cannot be created or opened
+        raise StorageUnavailable("cannot open the database") from exc
     if listen and isinstance(backend, PostgresBackend):
         try:
             await backend.start_change_listener()
