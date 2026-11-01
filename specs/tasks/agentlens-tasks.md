@@ -943,7 +943,7 @@ from `develop`.
 - **Done**: round-trip tests per conversion (money exact, unpriced → `None`/flag, multi-Source,
   `usage_source`); every §6.8 row has a table-driven test; DTOs reject unknown fields and are
   JSON-serializable with money as strings.
-- [ ]
+- [x] 2026-10-31 · PR #27
 
 ### P4-01.2 · Time expressions, `RunFilter` and the Runs URL grammar
 - **What**: `query/timeexpr.py` (`now`, `now-<n><unit>`, RFC 3339). `query/filters.py`:
@@ -955,7 +955,7 @@ from `develop`.
 - **Depends on**: P4-01.1
 - **Done**: parse ∘ serialize is the identity (property test); one malformed case per parameter
   raises `ValidationError` naming it; nothing returns an unfiltered query on error.
-- [ ]
+- [x] 2026-10-31 · PR #27
 
 ### P4-01.3 · Signed keyset cursors
 - **What**: `query/cursor.py`: encode/decode Run and Session cursors with `core.security.sign`
@@ -964,7 +964,7 @@ from `develop`.
 - **Depends on**: P4-01.1
 - **Done**: tampered, truncated, foreign-key and other-sort cursors raise
   `ValidationError("cursor")`; a cursor round-trips.
-- [ ]
+- [x] 2026-10-31 · PR #27
 
 ### P4-02.1 · `QueryService`: runs, LLM calls, selectors
 - **What**: `query/service.py` `QueryService(store, cfg, cursor_key)`: `list_runs`,
@@ -1246,6 +1246,7 @@ the matrix). No requirement is deferred at this point.
 | 2026-10-31 | P3-07.2, 08.1, 08.2 | Done | PR #23; `ingest/jobs.py`: finalizer every minute and purge every `purge_interval` under `job_lock` (second holder skips), `SettingsCache` (per-Project settings + compiled rules + retention, all pricing versions, session key) dropped per Project on `settings_changed` and reloaded every 30 s (pricing changes have no event); `ingest/admission.py`: key header precedence, salted-hash check, 5 s positive cache cleared on `settings_changed`, touch ≤ 1/min, internal failure reasons; `ingest/limits.py`: lazy token buckets (oversized batch admitted from a full bucket into debt), Content-Length precheck, capped read, incremental gzip with output cap (1 GiB bomb, peak memory bounded), overload guard. Wiring into the engine/routes comes with P3-09/10 |
 | 2026-10-31 | P3-09.1, 10.1, 11.1 | Done | PR #24; `ingest/core.py` `IngestCore` per engine run (admit → decode → span bucket → normalize → commit; metric writes) reached from HTTP through the new `IngestEngine.call`, `build_engine` wires core, jobs, auth-cache watcher and gRPC; `ingest/http.py` Starlette routes (`/v1/logs` 404); `ingest/grpc.py` (LogsService not registered → UNIMPLEMENTED; RetryInfo only on retryable codes); `ingest/metrics.py`. `google.rpc.Status`/`RetryInfo` are hand-encoded (`ingest/status.py`) instead of adding googleapis-common-protos. Security review: metric attributes now get the span redaction/hook/truncation and GenAI points count against the span bucket. Dev group gained the OTLP gRPC exporter (same pins as `bench`). **Not done**: the API §3.3 demo-mode 403 row (demo mode comes with P4-06/P8-02) |
 | 2026-10-31 | P3-12.1, 12.2, 13.1, 13.2 | Done | PR #25; `tests/property/` (OTLP → normalize → `write_group` invariance under permutation, splits, grouping and duplicates, both backends), `tests/golden/` (8 OTLP/JSON scenarios, `AGENTLENS_REGEN_GOLDEN=1`, `MAPPING_VERSION` guard), `tests/integration/` (test-only Granian app with the engine in its lifespan, real HTTP/gRPC ports, PG outage through a cuttable TCP proxy with recovery < 10 s, A-04 Project deleted mid-ingest: 400 on SQLite / 401 on PG after NOTIFY, SIGKILL after ack, revocation ≤ 5 s across two processes, two collectors). Fix: a full queue answers 503 `overloaded` with `overload_retry_after`. Golden review: on a span with both dialects the response model falls back to `llm.model_name` (per-field precedence, Tech Design §5.3). **P3 gate**: 1196 passed (CI hypothesis profile, both backends), ingest + store coverage 96 %, mypy --strict clean, 6 import contracts kept |
+| 2026-10-31 | P4-01.1, 01.2, 01.3 | Done | PR #27; `query/dto.py` (API v1.4 §6.7), `query/convert.py`, `query/kinds.py` (§6.8), `query/timeexpr.py`, `query/filters.py` (Runs URL grammar, round-trip property), `query/scope.py` (viewer scope; an unknown Project looks forbidden to an allowed-list viewer), `query/cursor.py` (signed, sort-bound). URL values are kept verbatim (no trimming) so the round trip is exact; unknown URL parameters are ignored |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).
