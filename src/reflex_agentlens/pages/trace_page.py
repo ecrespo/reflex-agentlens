@@ -1,32 +1,46 @@
-"""Trace page (plan tasks P6-05.1, P6-05.2; REQ-037.b, 103.b, 131, 150, API §7.2).
+"""Trace page (plan tasks P6-05.2, P6-06.2, P6-07.2; REQ-037.b, 103.b, 131, 150-154, API §7.2).
 
 ``/trace/[trace_id]?project=&tab=&span=&replay=&speed=``: ``load_trace`` resolves the trace ID
 among the viewer's Projects (several matches → disambiguation links, none → not found), loads
 the first page of the span tree and renders the waterfall. Spans past the page size load on
 demand; while the Run is ``in_progress`` a background task reloads the loaded spans on each
-change notice that names it. The graph tab and the span drawer arrive with P6-07.2 / P6-06.2.
+change notice that names it.
+
+Selecting a span (waterfall row or graph node) opens the drawer; the raw tab is built only when
+opened. Tab, selection and replay changes rewrite the URL in place (``history.replaceState``),
+so a link reproduces the view without reloading the trace on every click. Replay (REQ-154)
+steps the spans in start order at speed 1, 2, 5 or by hand.
 """
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 import reflex as rx
 from reflex.event import EventSpec
+from reflex_mermaidjs import mermaid
 
+from reflex_agentlens.components.drawer import drawer
 from reflex_agentlens.components.theme import kind_badge, status_badge
+from reflex_agentlens.core.errors import NotFound
 from reflex_agentlens.pages._base import AgentlensState, page_frame, ui_event
-from reflex_agentlens.query.dto import RunRef, RunSummary, SpanNode, Viewer
+from reflex_agentlens.query.dto import AgentGraph, RunRef, RunSummary, SpanNode, SpanRaw, Viewer
+from reflex_agentlens.views.detail import DrawerView, Section, drawer_view, raw_sections
 from reflex_agentlens.views.fmt import fmt_duration, fmt_time
+from reflex_agentlens.views.graph import graph_text, replay_delay_ms, replay_order, replay_step
 from reflex_agentlens.views.guard import guarded
 from reflex_agentlens.views.registry import registry, services
 from reflex_agentlens.views.trace import (
+    SPEEDS,
     TraceUrl,
     WaterfallRow,
     candidate_links,
     decode_trace_url,
+    is_hex_id,
     needs_reload,
     tabs_for,
     toggle,
@@ -41,6 +55,7 @@ log = logging.getLogger(__name__)
 
 TITLE = "Trace"
 TAB_LABELS = {"waterfall": "Waterfall", "graph": "Graph", "cost": "Cost", "raw": "Raw"}
+SPEED_LABELS = {"1": "1x", "2": "2x", "5": "5x", "step": "Step"}
 
 
 class TraceState(AgentlensState):
@@ -61,11 +76,27 @@ class TraceState(AgentlensState):
     generation: int = 0
     expanded: list[str] = []
     collapsed: list[str] = []
+    # span drawer (P6-06.2)
+    drawer: DrawerView | None = None
+    drawer_tab: str = "detail"
+    raw_sections: list[Section] = []
+    # graph and replay (P6-07.2)
+    chart: str = ""
+    graph_note: str = ""
+    replay: str = ""
+    speed: str = "1"
+    playing: bool = False
+    future: list[str] = []
     # backend only: the loaded tree, re-rendered on every toggle
     _run: RunSummary | None = None
     _spans: list[SpanNode] = []
     _next_offset: int | None = None
     _ref: RunRef | None = None
+    _graph: AgentGraph | None = None
+    _node_spans: dict[str, list[str]] = {}
+    _raw: SpanRaw | None = None
+    _trace_id: str = ""
+    _project: str | None = None
 
     def _url(self) -> tuple[str, TraceUrl]:
         trace_id = str(self.router.page.params.get("trace_id", ""))
@@ -81,6 +112,13 @@ class TraceState(AgentlensState):
             expanded=frozenset(self.expanded),
             collapsed=frozenset(self.collapsed),
         )
+
+    def _draw_graph(self) -> None:
+        if self._graph is None:
+            self.chart, self.graph_note, self._node_spans = "", "", {}
+            return
+        text = graph_text(self._graph, self.replay or self.selected or None)
+        self.chart, self.graph_note, self._node_spans = text.text, text.note, text.node_spans
 
     def _show(self, run: RunSummary, spans: list[SpanNode], next_offset: int | None) -> None:
         self._run, self._spans, self._next_offset = run, spans, next_offset
@@ -104,13 +142,16 @@ class TraceState(AgentlensState):
             )
         ]
         self._render()
+        self._draw_graph()
 
     def _reset(self) -> None:
         self.found, self.candidates, self.rows, self.totals, self.raw = False, [], [], [], []
         self.heading = self.run_status = self.started = self.duration = ""
-        self.in_progress = self.has_more = False
-        self.expanded, self.collapsed = [], []
+        self.in_progress = self.has_more = self.playing = False
+        self.expanded, self.collapsed, self.future, self.raw_sections = [], [], [], []
+        self.drawer, self.drawer_tab, self.chart, self.graph_note = None, "detail", "", ""
         self._run, self._spans, self._next_offset, self._ref = None, [], None, None
+        self._graph, self._node_spans, self._raw = None, {}, None
 
     async def _reload(self, viewer: Viewer, ref: RunRef) -> None:
         """Every span loaded so far, fresh (live append keeps the same depth of loading)."""
@@ -123,7 +164,31 @@ class TraceState(AgentlensState):
             spans += more.spans
             nxt = more.next_offset
         self.totals = totals_rows(detail.totals)
+        self._graph = detail.graph
         self._show(detail.run, spans, nxt)
+
+    async def _open_drawer(self, viewer: Viewer, span_id: str) -> None:
+        self.drawer, self._raw, self.raw_sections, self.drawer_tab = None, None, [], "detail"
+        if self._ref is None or not is_hex_id(span_id, 16):
+            return
+        query, _ = services()
+        try:
+            detail = await query.get_span_detail(viewer, self._ref, span_id)
+        except NotFound:
+            return  # a stale ``span=`` link: the trace still shows
+        self.drawer, self._raw = drawer_view(detail), detail.raw
+
+    def _sync_url(self) -> EventSpec:
+        """Rewrite the address bar for the current view (no navigation, no reload)."""
+        url = TraceUrl(
+            tab=self.tab,  # type: ignore[arg-type]
+            span=self.selected or None,
+            replay=self.replay or None,
+            speed=self.speed,
+            project=self._project,
+        )
+        href = trace_page_href(registry().prefix, self._trace_id, url)
+        return rx.call_script(f"window.history.replaceState(null, '', {json.dumps(href)})")
 
     @ui_event
     async def load_trace(self, viewer: Viewer) -> EventSpec | None:
@@ -131,7 +196,9 @@ class TraceState(AgentlensState):
         self._reset()
         self.generation += 1
         trace_id, url = self._url()
+        self._trace_id, self._project = trace_id, url.project
         self.tab, self.selected = url.tab, url.span or ""
+        self.replay, self.speed = url.replay or "", url.speed
         query, _ = services()
         refs = await query.resolve_trace(viewer, trace_id, url.project)
         if len(refs) > 1:
@@ -144,6 +211,10 @@ class TraceState(AgentlensState):
         await self._reload(viewer, refs[0])
         if self.tab not in self.tabs:
             self.tab = "waterfall"  # REQ-131: a generic trace has no GenAI panels
+        if self.selected:
+            await self._open_drawer(viewer, self.selected)
+        if self.replay:
+            self._replay_to(self.replay)
         return TraceState.follow if self.in_progress else None
 
     @ui_event
@@ -163,19 +234,111 @@ class TraceState(AgentlensState):
         self.expanded, self.collapsed = sorted(expanded), sorted(collapsed)
         self._render()
 
-    def _go(self, url: TraceUrl) -> EventSpec:
-        trace_id, _ = self._url()
-        return rx.redirect(trace_page_href(registry().prefix, trace_id, url), replace=True)
-
     @rx.event
     def pick_tab(self, tab: str) -> EventSpec:
-        _, url = self._url()
-        return self._go(decode_trace_url({**_pairs(url), "tab": tab}))
+        picked = decode_trace_url({"tab": tab}).tab
+        self.tab = picked if picked in self.tabs else "waterfall"
+        return self._sync_url()
+
+    @ui_event
+    async def select_span(self, viewer: Viewer, span_id: str) -> EventSpec | None:
+        if not is_hex_id(span_id, 16):
+            return None
+        self.selected = span_id
+        await self._open_drawer(viewer, span_id)
+        self._draw_graph()
+        return self._sync_url()
 
     @rx.event
-    def select_span(self, span_id: str) -> EventSpec:
-        _, url = self._url()
-        return self._go(decode_trace_url({**_pairs(url), "span": span_id}))
+    def close_drawer(self) -> EventSpec:
+        self.selected, self.drawer, self._raw, self.raw_sections = "", None, None, []
+        self._draw_graph()
+        return self._sync_url()
+
+    @rx.event
+    def pick_drawer_tab(self, tab: str) -> None:
+        self.drawer_tab = "raw" if tab == "raw" else "detail"
+        if self.drawer_tab == "raw" and self._raw is not None and not self.raw_sections:
+            self.raw_sections = raw_sections(self._raw)  # built only when opened
+
+    @rx.event
+    def on_node_click(self, event: dict[str, Any]) -> Any:
+        """A graph node selects its first span (REQ-153)."""
+        spans = self._node_spans.get(str(event.get("node_id", "")))
+        if not spans:
+            return None
+        return TraceState.select_span(spans[0])
+
+    # ── replay (REQ-154) ─────────────────────────────────────────────────────────────────────
+
+    def _replay_to(self, span_id: str | None) -> None:
+        order = replay_order(self._spans)
+        if span_id not in order:
+            span_id = replay_step(order, None, 1)
+        self.replay = span_id or ""
+        self.future = order[order.index(span_id) + 1 :] if span_id else []
+        self._draw_graph()
+
+    @rx.event
+    def start_replay(self) -> EventSpec:
+        self._replay_to(None)
+        return self._sync_url()
+
+    @rx.event
+    def step_replay(self, delta: int) -> EventSpec:
+        self.playing = False
+        self._replay_to(replay_step(replay_order(self._spans), self.replay or None, delta))
+        return self._sync_url()
+
+    @rx.event
+    def set_speed(self, speed: str) -> EventSpec:
+        self.speed = speed if speed in SPEEDS else "1"
+        if self.speed == "step":
+            self.playing = False
+        return self._sync_url()
+
+    @rx.event
+    def exit_replay(self) -> EventSpec:
+        self.replay, self.future, self.playing = "", [], False
+        self._draw_graph()
+        return self._sync_url()
+
+    @rx.event
+    def toggle_play(self) -> EventSpec | None:
+        if self.playing or self.speed == "step" or not self.replay:
+            self.playing = False
+            return None
+        self.playing = True
+        return TraceState.play
+
+    def _playing(self, generation: int) -> bool:
+        return self.playing and self.generation == generation
+
+    @rx.event(background=True)
+    async def play(self) -> None:
+        """Advance one span per delay until the end, a pause, or a reload."""
+        async with self:
+            generation = self.generation
+        while True:
+            async with self:
+                if not self._playing(generation):
+                    return
+                order = replay_order(self._spans)
+                nxt = replay_step(order, self.replay or None, 1)
+                if nxt is None or nxt == self.replay:
+                    self.playing = False
+                    return
+                starts = {s.span_id: s.start_ns for s in self._spans}
+                gap = starts.get(nxt, 0) - starts.get(self.replay, 0)
+                delay = replay_delay_ms(self.speed, gap)
+                if delay is None:
+                    self.playing = False
+                    return
+            await asyncio.sleep(delay / 1000)
+            async with self:
+                if not self._playing(generation):
+                    return
+                self._replay_to(nxt)
 
     @rx.event(background=True)
     async def follow(self) -> None:
@@ -202,13 +365,6 @@ class TraceState(AgentlensState):
                         return
         except Exception as exc:  # live append is best effort; the page still works
             log.warning("trace live updates stopped (%s)", type(exc).__name__)
-
-
-def _pairs(url: TraceUrl) -> dict[str, str]:
-    out = {"tab": url.tab, "speed": url.speed}
-    out |= {k: v for k, v in (("span", url.span), ("replay", url.replay),
-                              ("project", url.project)) if v}  # fmt: skip
-    return out
 
 
 ON_LOAD = [AgentlensState.check_auth, TraceState.load_trace]
@@ -251,7 +407,7 @@ def _waterfall_row(row: Any) -> rx.Component:
                 rx.el.button(
                     rx.cond(row.placeholder, "(missing parent span)", row.label),
                     type="button",
-                    on_click=TraceState.select_span(row.span_id),  # type: ignore[operator]
+                    on_click=TraceState.select_span(row.span_id),
                     class_name="agentlens-link",
                 ),
                 rx.cond(row.badges != "", rx.el.small(" " + row.badges)),
@@ -267,8 +423,12 @@ def _waterfall_row(row: Any) -> rx.Component:
         rx.el.td(row.duration),
         rx.el.td(row.tokens),
         rx.el.td(row.cost),
-        aria_selected=row.span_id == TraceState.selected,
-        class_name=rx.cond(row.span_id == TraceState.selected, "agentlens-selected", ""),
+        aria_selected=(row.span_id == TraceState.selected) | (row.span_id == TraceState.replay),
+        class_name=rx.cond(
+            (row.span_id == TraceState.selected) | (row.span_id == TraceState.replay),
+            "agentlens-selected",
+            rx.cond(TraceState.future.contains(row.span_id), "agentlens-future", ""),  # type: ignore[attr-defined]
+        ),
     )
 
 
@@ -322,8 +482,82 @@ def tab_body() -> rx.Component:
         TraceState.tab,
         ("cost", _pairs_table(TraceState.totals)),
         ("raw", _pairs_table(TraceState.raw)),
-        ("graph", rx.el.p("The agent graph is not available yet.")),
+        ("graph", graph_panel()),
         waterfall(),
+    )
+
+
+def graph_panel() -> rx.Component:
+    """REQ-153: the agent graph; a node click selects its span. ``strict`` Mermaid, no icon
+    packs, no Font Awesome (REQ-324)."""
+    return rx.cond(
+        TraceState.chart != "",
+        rx.fragment(
+            rx.cond(TraceState.graph_note != "", rx.el.p(TraceState.graph_note, role="note")),
+            mermaid(
+                TraceState.chart,
+                security_level="strict",
+                font_awesome=False,
+                icon_packs=[],
+                html_labels=False,
+                deterministic_ids=True,
+                node_click=True,
+                on_node_click=TraceState.on_node_click,
+                pan_zoom=True,
+            ),
+        ),
+        rx.el.p("No agent graph was recorded for this Run."),
+    )
+
+
+def replay_bar() -> rx.Component:
+    """REQ-154: replay the Run span by span."""
+    return rx.cond(
+        TraceState.replay == "",
+        rx.el.button("Replay", type="button", on_click=TraceState.start_replay),
+        rx.el.div(
+            rx.el.button(
+                "◀",
+                type="button",
+                aria_label="Previous span",
+                on_click=TraceState.step_replay(-1),  # type: ignore[operator]
+            ),
+            rx.el.button(
+                rx.cond(TraceState.playing, "Pause", "Play"),
+                type="button",
+                on_click=TraceState.toggle_play,
+                disabled=TraceState.speed == "step",
+            ),
+            rx.el.button(
+                "▶",
+                type="button",
+                aria_label="Next span",
+                on_click=TraceState.step_replay(1),  # type: ignore[operator]
+            ),
+            rx.el.select(
+                *[rx.el.option(label, value=key) for key, label in SPEED_LABELS.items()],
+                value=TraceState.speed,
+                on_change=TraceState.set_speed,
+                aria_label="Replay speed",
+            ),
+            rx.el.button("Exit replay", type="button", on_click=TraceState.exit_replay),
+            role="toolbar",
+            aria_label="Replay",
+            class_name="agentlens-replay",
+        ),
+    )
+
+
+def span_drawer() -> rx.Component:
+    return rx.cond(
+        TraceState.drawer,
+        drawer(
+            TraceState.drawer,
+            TraceState.drawer_tab,
+            TraceState.raw_sections,
+            TraceState.pick_drawer_tab,
+            TraceState.close_drawer,
+        ),
     )
 
 
@@ -353,7 +587,7 @@ def disambiguation() -> rx.Component:
 def body() -> rx.Component:
     return rx.cond(
         TraceState.found,
-        rx.fragment(header(), tab_bar(), tab_body()),
+        rx.fragment(header(), replay_bar(), tab_bar(), tab_body(), span_drawer()),
         rx.cond(TraceState.candidates.length() > 0, disambiguation()),  # type: ignore[attr-defined]
     )
 

@@ -42,7 +42,13 @@ AUDIT = textwrap.dedent(
             path = os.path.realpath(str(args[0]))
             if not path.startswith(root) and not path.endswith(".pyc"):
                 events.append([event, path])
-        elif event in ("os.mkdir", "os.rename", "os.remove", "os.symlink"):
+        elif event in ("os.symlink", "os.rename"):
+            # (src, dst): the entry written is dst; never resolve it (it may be a link)
+            dst = os.path.abspath(str(args[1]))
+            path = os.path.join(os.path.realpath(os.path.dirname(dst)), os.path.basename(dst))
+            if not path.startswith(root):
+                events.append([event, path])
+        elif event in ("os.mkdir", "os.remove"):
             path = os.path.realpath(str(args[0]))
             if not path.startswith(root) and "__pycache__" not in path:
                 events.append([event, path])
@@ -190,5 +196,15 @@ def test_runs_and_trace_pages_compile_to_js(fresh_registry: None) -> None:
     trace_js = compiler._compile_page(
         app._pages["agentlens/trace/[trace_id]"], "agentlens/trace/[trace_id]"
     )
-    for text in ("Load more spans", "several Projects", "Timeline"):
+    for text in (
+        "Load more spans",
+        "several Projects",
+        "Timeline",
+        "Raw attributes",
+        "Exit replay",
+        "Replay speed",
+    ):
         assert text in trace_js
+    # REQ-324: strict Mermaid, no icon packs, no Font Awesome (P6-07.2)
+    for prop in ('securityLevel:"strict"', "fontAwesome:false", "iconPacks:[]", "htmlLabels:false"):
+        assert prop in trace_js

@@ -150,3 +150,60 @@ async def test_live_steps_ask_the_hook_again_after_the_cache_a12(
     reg.viewers.forget(state._token())  # what the 30 s expiry does
     assert await state._live_viewer() is None
     assert state.authorized is False
+
+
+def _llm_span(runs: list[Any]) -> tuple[str, str]:
+    for run in runs:
+        for sp in run:
+            if sp.llm_call is not None:
+                return sp.trace_id.hex(), sp.span_id.hex()
+    raise AssertionError("dataset has no LLM span")
+
+
+@pytest.mark.usefixtures("wired")
+async def test_drawer_graph_and_replay(
+    db: ContractDB, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P6-06.2, P6-07.2: selecting a span opens the drawer (raw tab built lazily), a graph node
+    selects its span, replay steps in start order; each rewrites the URL in place."""
+    await setup(db, tmp_path)
+    trace_id, span_id = _llm_span(RUNS)
+    monkeypatch.setattr(
+        TraceState, "_url", lambda self: (trace_id, TraceUrl(span=span_id, project="shop"))
+    )
+    state = TraceState()
+    await state.load_trace()
+    assert state.drawer is not None  # ``span=`` in the URL opens the drawer on load
+    assert state.drawer.span_id == span_id
+    assert state.drawer.llm
+    assert state.raw_sections == []  # not built until the raw tab is opened
+    state.pick_drawer_tab("raw")  # type: ignore[operator]
+    assert [s.title for s in state.raw_sections][:2] == ["Attributes", "Resource"]
+
+    spec = state.close_drawer()  # type: ignore[operator]
+    assert (state.drawer, state.selected) == (None, "")  # type: ignore[comparison-overlap]
+    assert f"/obs/trace/{trace_id}?project=shop" in str(spec)
+
+    spec = await state.select_span("not-a-span-id")
+    assert spec is None
+    spec = await state.select_span(span_id)
+    assert state.selected == span_id
+    assert f"span={span_id}" in str(spec)
+
+    assert state.chart.startswith("flowchart LR")  # the dataset's agent Runs have a graph
+    node = next(n for n, spans in state._node_spans.items() if spans)
+    assert state.on_node_click({"node_id": node}) is not None  # type: ignore[operator]
+    assert state.on_node_click({"node_id": "nope"}) is None  # type: ignore[operator]
+
+    state.start_replay()  # type: ignore[operator]
+    first = state.replay
+    assert first
+    spec = state.step_replay(1)  # type: ignore[operator]
+    assert state.replay != first or len(state.future) == 0
+    assert "replay=" in str(spec)
+    state.set_speed("step")  # type: ignore[operator]
+    assert state.toggle_play() is None  # type: ignore[operator]  # step mode never auto-plays
+    state.set_speed("5")  # type: ignore[operator]
+    assert state.toggle_play() == TraceState.play  # type: ignore[operator]
+    state.exit_replay()  # type: ignore[operator]
+    assert (state.replay, state.future, state.playing) == ("", [], False)
