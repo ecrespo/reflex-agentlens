@@ -6,7 +6,7 @@
 |---|---|
 | **Author** | Ernesto Crespo (`ecrespo`) |
 | **Status** | `APPROVED` |
-| **API version** | v1.4.2 (ships with package 0.1.0) |
+| **API version** | v1.4.3 (ships with package 0.1.0) |
 | **Date** | 2026-10-30 |
 | **Related PRD** | [`specs/prd/agentlens-v0.1.md`](../prd/agentlens-v0.1.md) v1.1 |
 | **Governed by** | [`specs/constitution.md`](../constitution.md) v1.0 |
@@ -334,6 +334,7 @@ class StorageBackend(Protocol):
     # ── retention ─────────────────────────────────────────────────────────
     async def purge_by_age(self, now_ns: int, batch_traces: int) -> PurgeReport: ...     # [REQ-090]
     async def purge_by_size(self, limit_bytes: int, batch_traces: int) -> PurgeReport: ...  # [REQ-091]
+    async def count_purgeable(self, now_ns: int) -> int: ...                              # purge --dry-run [REQ-092.a]
     async def storage_usage(self) -> StorageUsage: ...                                   # [REQ-173]
     async def last_purge(self) -> PurgeReport | None: ...
 
@@ -1254,3 +1255,4 @@ When stdout is not a TTY, the key line is replaced by
 | 1.4 | 2026-10-31 | Delta `changes/2026-10-p4-query-prep/`: §6.7 DTO reference with every field (A-05; `RunSummary.usage_source`), §6.8 kind mapping (A-10); `get_trace` paging, `get_span_detail`, `get_project`, `list_pricing_versions`, `list_projects_admin`; `RunFilter.sources` holds Source labels; cursor tag carries the sort |
 | 1.4.1 | 2026-10-31 | P4 implementation notes: `get_graph(full=)` for REQ-153.d's full view; `storage_status` is limited to full-scope viewers; `metric_tokens` groups are `model/token type` |
 | 1.4.2 | 2026-11-01 | P4 implementation notes: store `get_pricing_version(version)` backs `get_pricing(viewer, version)` (REQ-171.a); `subscribe` yields an async generator |
+| 1.4.3 | 2026-11-01 | P5 implementation notes: store `count_purgeable(now_ns)` for `purge --dry-run`; `demo` exits 2 until the sample dataset ships (P8-02) |
