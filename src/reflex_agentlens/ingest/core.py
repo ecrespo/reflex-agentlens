@@ -37,7 +37,7 @@ from reflex_agentlens.core.errors import NotFound, StorageUnavailable
 from reflex_agentlens.ingest.admission import Authenticator, KeyStore, Principal
 from reflex_agentlens.ingest.decode import Encoding, decode_metrics, decode_traces
 from reflex_agentlens.ingest.engine import EngineRuntime, EngineStore, IngestEngine, Service
-from reflex_agentlens.ingest.errors import BatchRejectedError, Unauthenticated
+from reflex_agentlens.ingest.errors import BatchRejectedError, Overloaded, Unauthenticated
 from reflex_agentlens.ingest.jobs import JobStore, SettingsCache, job_services
 from reflex_agentlens.ingest.limits import OverloadGuard, RateLimiter, decode_content
 from reflex_agentlens.ingest.metrics import genai_points, normalize_metrics, scrubber
@@ -149,7 +149,10 @@ class IngestCore:
         result = normalize_batch(request, ctx)
         if result.batch.spans:
             # shielded: a client that disconnects must not cancel an accepted batch's commit
-            outcome = await asyncio.shield(self.rt.writer.queue.put(result.batch))
+            try:
+                outcome = await asyncio.shield(self.rt.writer.queue.put(result.batch))
+            except Overloaded:  # the batch does not fit the queue budget (REQ-009.b/c)
+                raise Overloaded(retry_after_s=self.guard.retry_after_s) from None
             if isinstance(outcome, BatchRejected):
                 log.warning("batch rejected: %s", outcome.reason)
                 raise BatchRejectedError()

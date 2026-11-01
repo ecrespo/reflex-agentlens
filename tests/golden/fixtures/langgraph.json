@@ -1,0 +1,157 @@
+{
+ "description": "LangGraph through OpenInference: CHAIN spans with langgraph_node metadata become graph nodes.",
+ "requests": [
+  {
+   "resourceSpans": [
+    {
+     "resource": {
+      "attributes": [
+       {
+        "key": "service.name",
+        "value": {
+         "stringValue": "svc"
+        }
+       }
+      ]
+     },
+     "scopeSpans": [
+      {
+       "scope": {
+        "name": "test.scope"
+       },
+       "spans": [
+        {
+         "traceId": "00000000000000000000000000000007",
+         "spanId": "0000000000000047",
+         "name": "LangGraph",
+         "startTimeUnixNano": "1792999960000000000",
+         "endTimeUnixNano": "1792999990000000000",
+         "attributes": [
+          {
+           "key": "openinference.span.kind",
+           "value": {
+            "stringValue": "CHAIN"
+           }
+          },
+          {
+           "key": "session.id",
+           "value": {
+            "stringValue": "lg-thread-9"
+           }
+          }
+         ]
+        },
+        {
+         "traceId": "00000000000000000000000000000007",
+         "spanId": "0000000000000048",
+         "parentSpanId": "0000000000000047",
+         "name": "agent",
+         "startTimeUnixNano": "1792999961000000000",
+         "endTimeUnixNano": "1792999970000000000",
+         "attributes": [
+          {
+           "key": "openinference.span.kind",
+           "value": {
+            "stringValue": "CHAIN"
+           }
+          },
+          {
+           "key": "metadata",
+           "value": {
+            "stringValue": "{\"langgraph_node\": \"agent\", \"langgraph_step\": 1}"
+           }
+          }
+         ]
+        },
+        {
+         "traceId": "00000000000000000000000000000007",
+         "spanId": "0000000000000049",
+         "parentSpanId": "0000000000000048",
+         "name": "ChatOpenAI",
+         "startTimeUnixNano": "1792999962000000000",
+         "endTimeUnixNano": "1792999969000000000",
+         "attributes": [
+          {
+           "key": "openinference.span.kind",
+           "value": {
+            "stringValue": "LLM"
+           }
+          },
+          {
+           "key": "llm.model_name",
+           "value": {
+            "stringValue": "gpt-4o-mini"
+           }
+          },
+          {
+           "key": "llm.provider",
+           "value": {
+            "stringValue": "openai"
+           }
+          },
+          {
+           "key": "llm.token_count.prompt",
+           "value": {
+            "intValue": "80"
+           }
+          },
+          {
+           "key": "llm.token_count.completion",
+           "value": {
+            "intValue": "12"
+           }
+          }
+         ]
+        },
+        {
+         "traceId": "00000000000000000000000000000007",
+         "spanId": "000000000000004a",
+         "parentSpanId": "0000000000000047",
+         "name": "tools",
+         "startTimeUnixNano": "1792999971000000000",
+         "endTimeUnixNano": "1792999980000000000",
+         "attributes": [
+          {
+           "key": "openinference.span.kind",
+           "value": {
+            "stringValue": "CHAIN"
+           }
+          },
+          {
+           "key": "metadata",
+           "value": {
+            "stringValue": "{\"langgraph_node\": \"tools\", \"langgraph_step\": 2}"
+           }
+          }
+         ]
+        },
+        {
+         "traceId": "00000000000000000000000000000007",
+         "spanId": "000000000000004b",
+         "parentSpanId": "000000000000004a",
+         "name": "lookup",
+         "startTimeUnixNano": "1792999972000000000",
+         "endTimeUnixNano": "1792999979000000000",
+         "attributes": [
+          {
+           "key": "openinference.span.kind",
+           "value": {
+            "stringValue": "TOOL"
+           }
+          },
+          {
+           "key": "tool.name",
+           "value": {
+            "stringValue": "lookup"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

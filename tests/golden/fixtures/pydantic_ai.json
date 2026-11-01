@@ -1,0 +1,183 @@
+{
+ "description": "PydanticAI agent run: agent \u2192 chat \u2192 tool call \u2192 deferred tool (approval pending).",
+ "requests": [
+  {
+   "resourceSpans": [
+    {
+     "resource": {
+      "attributes": [
+       {
+        "key": "service.name",
+        "value": {
+         "stringValue": "weather"
+        }
+       },
+       {
+        "key": "service.namespace",
+        "value": {
+         "stringValue": "demo"
+        }
+       }
+      ]
+     },
+     "scopeSpans": [
+      {
+       "scope": {
+        "name": "test.scope"
+       },
+       "spans": [
+        {
+         "traceId": "00000000000000000000000000000006",
+         "spanId": "000000000000003d",
+         "name": "invoke_agent weather_agent",
+         "startTimeUnixNano": "1792999940000000000",
+         "endTimeUnixNano": "1792999970000000000",
+         "attributes": [
+          {
+           "key": "gen_ai.operation.name",
+           "value": {
+            "stringValue": "invoke_agent"
+           }
+          },
+          {
+           "key": "gen_ai.agent.name",
+           "value": {
+            "stringValue": "weather_agent"
+           }
+          },
+          {
+           "key": "gen_ai.conversation.id",
+           "value": {
+            "stringValue": "pai-1"
+           }
+          },
+          {
+           "key": "gen_ai.usage.input_tokens",
+           "value": {
+            "intValue": "500"
+           }
+          },
+          {
+           "key": "gen_ai.usage.output_tokens",
+           "value": {
+            "intValue": "80"
+           }
+          }
+         ]
+        },
+        {
+         "traceId": "00000000000000000000000000000006",
+         "spanId": "000000000000003e",
+         "parentSpanId": "000000000000003d",
+         "name": "chat gpt-4o",
+         "startTimeUnixNano": "1792999941000000000",
+         "endTimeUnixNano": "1792999945000000000",
+         "attributes": [
+          {
+           "key": "gen_ai.operation.name",
+           "value": {
+            "stringValue": "chat"
+           }
+          },
+          {
+           "key": "gen_ai.provider.name",
+           "value": {
+            "stringValue": "openai"
+           }
+          },
+          {
+           "key": "gen_ai.request.model",
+           "value": {
+            "stringValue": "gpt-4o"
+           }
+          },
+          {
+           "key": "gen_ai.response.model",
+           "value": {
+            "stringValue": "gpt-4o-2024-08-06"
+           }
+          },
+          {
+           "key": "gen_ai.usage.input_tokens",
+           "value": {
+            "intValue": "200"
+           }
+          },
+          {
+           "key": "gen_ai.usage.output_tokens",
+           "value": {
+            "intValue": "30"
+           }
+          },
+          {
+           "key": "gen_ai.response.finish_reasons",
+           "value": {
+            "stringValue": "tool_call"
+           }
+          }
+         ]
+        },
+        {
+         "traceId": "00000000000000000000000000000006",
+         "spanId": "000000000000003f",
+         "parentSpanId": "000000000000003d",
+         "name": "execute_tool get_weather",
+         "startTimeUnixNano": "1792999946000000000",
+         "endTimeUnixNano": "1792999948000000000",
+         "attributes": [
+          {
+           "key": "gen_ai.operation.name",
+           "value": {
+            "stringValue": "execute_tool"
+           }
+          },
+          {
+           "key": "gen_ai.tool.name",
+           "value": {
+            "stringValue": "get_weather"
+           }
+          },
+          {
+           "key": "gen_ai.tool.call.id",
+           "value": {
+            "stringValue": "call_1"
+           }
+          }
+         ]
+        },
+        {
+         "traceId": "00000000000000000000000000000006",
+         "spanId": "0000000000000040",
+         "parentSpanId": "000000000000003d",
+         "name": "running tool: book_trip",
+         "startTimeUnixNano": "1792999949000000000",
+         "endTimeUnixNano": "1792999950000000000",
+         "attributes": [
+          {
+           "key": "gen_ai.tool.name",
+           "value": {
+            "stringValue": "book_trip"
+           }
+          },
+          {
+           "key": "gen_ai.tool.call.id",
+           "value": {
+            "stringValue": "call_2"
+           }
+          },
+          {
+           "key": "pydantic_ai.tool.deferral.name",
+           "value": {
+            "stringValue": "book_trip"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

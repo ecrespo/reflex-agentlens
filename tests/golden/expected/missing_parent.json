@@ -1,0 +1,101 @@
+{
+ "mapping_version": 1,
+ "views": {
+  "approvals": [],
+  "graph_nodes": [],
+  "llm_calls": [
+   {
+    "cache_write_tokens": null,
+    "cached_input_tokens": null,
+    "content_dropped": false,
+    "cost_nusd": 75000,
+    "duration_ns": 10000000000,
+    "error_type": null,
+    "finish_reasons": [],
+    "input_tokens": 10,
+    "model": "gpt-4o",
+    "operation": "chat",
+    "output_tokens": 5,
+    "params": {},
+    "pricing_version": 1,
+    "provider": null,
+    "reasoning_tokens": null,
+    "request_model": "gpt-4o",
+    "response_model": null,
+    "span_id": "0000000000000016",
+    "start_ns": 1792999100000000000,
+    "status": "ok",
+    "unpriced": false
+   }
+  ],
+  "rejected_spans": 0,
+  "runs": [
+   {
+    "agent_name": null,
+    "bytes_est": 380,
+    "cache_write_tokens": 0,
+    "cached_input_tokens": 0,
+    "cost_nusd": 75000,
+    "duration_ns": null,
+    "end_ns": null,
+    "error_spans": 0,
+    "input_tokens": 10,
+    "is_genai": true,
+    "last_span_ns": 1792999120000000000,
+    "llm_calls": 1,
+    "missing_parents": 2,
+    "models": [
+     "gpt-4o"
+    ],
+    "output_tokens": 5,
+    "reasoning_tokens": 0,
+    "root_name": null,
+    "root_span_id": null,
+    "session_ext": null,
+    "source_count": 1,
+    "source_name": "svc",
+    "source_ns": "",
+    "span_count": 2,
+    "start_ns": 1792999100000000000,
+    "status": "incomplete",
+    "tool_calls": 1,
+    "trace_id": "00000000000000000000000000000002",
+    "unpriced_calls": 0,
+    "usage_source": "llm"
+   }
+  ],
+  "session_ids": [],
+  "sessions": [],
+  "sources": [
+   [
+    "",
+    "svc",
+    1792999100000000000,
+    1792999120000000000
+   ]
+  ],
+  "spans": [
+   [
+    "0000000000000016",
+    "chat gpt-4o"
+   ],
+   [
+    "0000000000000017",
+    "execute_tool search"
+   ]
+  ],
+  "tool_calls": [
+   {
+    "content_dropped": false,
+    "duration_ns": 9000000000,
+    "error_type": null,
+    "span_id": "0000000000000017",
+    "start_ns": 1792999111000000000,
+    "status": "ok",
+    "tool_call_id": null,
+    "tool_name": "search",
+    "tool_type": null
+   }
+  ]
+ }
+}

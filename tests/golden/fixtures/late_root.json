@@ -1,0 +1,110 @@
+{
+ "description": "The root arrives in a later export than its children: Run recomputed to ok (REQ-032.c).",
+ "requests": [
+  {
+   "resourceSpans": [
+    {
+     "resource": {
+      "attributes": [
+       {
+        "key": "service.name",
+        "value": {
+         "stringValue": "svc"
+        }
+       }
+      ]
+     },
+     "scopeSpans": [
+      {
+       "scope": {
+        "name": "test.scope"
+       },
+       "spans": [
+        {
+         "traceId": "00000000000000000000000000000003",
+         "spanId": "0000000000000020",
+         "parentSpanId": "000000000000001f",
+         "name": "chat gpt-4o",
+         "startTimeUnixNano": "1792999950000000000",
+         "endTimeUnixNano": "1792999960000000000",
+         "attributes": [
+          {
+           "key": "gen_ai.operation.name",
+           "value": {
+            "stringValue": "chat"
+           }
+          },
+          {
+           "key": "gen_ai.request.model",
+           "value": {
+            "stringValue": "gpt-4o"
+           }
+          },
+          {
+           "key": "gen_ai.usage.input_tokens",
+           "value": {
+            "intValue": "12"
+           }
+          },
+          {
+           "key": "gen_ai.usage.output_tokens",
+           "value": {
+            "intValue": "7"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "resourceSpans": [
+    {
+     "resource": {
+      "attributes": [
+       {
+        "key": "service.name",
+        "value": {
+         "stringValue": "svc"
+        }
+       }
+      ]
+     },
+     "scopeSpans": [
+      {
+       "scope": {
+        "name": "test.scope"
+       },
+       "spans": [
+        {
+         "traceId": "00000000000000000000000000000003",
+         "spanId": "000000000000001f",
+         "name": "invoke_agent planner",
+         "startTimeUnixNano": "1792999945000000000",
+         "endTimeUnixNano": "1792999965000000000",
+         "attributes": [
+          {
+           "key": "gen_ai.operation.name",
+           "value": {
+            "stringValue": "invoke_agent"
+           }
+          },
+          {
+           "key": "gen_ai.agent.name",
+           "value": {
+            "stringValue": "planner"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

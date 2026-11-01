@@ -1,0 +1,85 @@
+{
+ "mapping_version": 1,
+ "views": {
+  "approvals": [],
+  "graph_nodes": [],
+  "llm_calls": [
+   {
+    "cache_write_tokens": null,
+    "cached_input_tokens": null,
+    "content_dropped": false,
+    "cost_nusd": 1500000,
+    "duration_ns": 10000000000,
+    "error_type": null,
+    "finish_reasons": [],
+    "input_tokens": 300,
+    "model": "claude-sonnet-4-oi",
+    "operation": "chat",
+    "output_tokens": 40,
+    "params": {},
+    "pricing_version": 1,
+    "provider": "anthropic",
+    "reasoning_tokens": null,
+    "request_model": "claude-sonnet-4",
+    "response_model": "claude-sonnet-4-oi",
+    "span_id": "0000000000000033",
+    "start_ns": 1792999980000000000,
+    "status": "ok",
+    "unpriced": false
+   }
+  ],
+  "rejected_spans": 0,
+  "runs": [
+   {
+    "agent_name": null,
+    "bytes_est": 393,
+    "cache_write_tokens": 0,
+    "cached_input_tokens": 0,
+    "cost_nusd": 1500000,
+    "duration_ns": 10000000000,
+    "end_ns": 1792999990000000000,
+    "error_spans": 0,
+    "input_tokens": 300,
+    "is_genai": true,
+    "last_span_ns": 1792999990000000000,
+    "llm_calls": 1,
+    "missing_parents": 0,
+    "models": [
+     "claude-sonnet-4-oi"
+    ],
+    "output_tokens": 40,
+    "reasoning_tokens": 0,
+    "root_name": "chat claude",
+    "root_span_id": "0000000000000033",
+    "session_ext": null,
+    "source_count": 1,
+    "source_name": "svc",
+    "source_ns": "",
+    "span_count": 1,
+    "start_ns": 1792999980000000000,
+    "status": "ok",
+    "tool_calls": 0,
+    "trace_id": "00000000000000000000000000000005",
+    "unpriced_calls": 0,
+    "usage_source": "llm"
+   }
+  ],
+  "session_ids": [],
+  "sessions": [],
+  "sources": [
+   [
+    "",
+    "svc",
+    1792999980000000000,
+    1792999990000000000
+   ]
+  ],
+  "spans": [
+   [
+    "0000000000000033",
+    "chat claude"
+   ]
+  ],
+  "tool_calls": []
+ }
+}

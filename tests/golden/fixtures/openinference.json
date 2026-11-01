@@ -1,0 +1,131 @@
+{
+ "description": "OpenInference agent: AGENT, LLM and TOOL span kinds with session.id.",
+ "requests": [
+  {
+   "resourceSpans": [
+    {
+     "resource": {
+      "attributes": [
+       {
+        "key": "service.name",
+        "value": {
+         "stringValue": "svc"
+        }
+       }
+      ]
+     },
+     "scopeSpans": [
+      {
+       "scope": {
+        "name": "test.scope"
+       },
+       "spans": [
+        {
+         "traceId": "00000000000000000000000000000008",
+         "spanId": "0000000000000051",
+         "name": "research",
+         "startTimeUnixNano": "1792999970000000000",
+         "endTimeUnixNano": "1792999990000000000",
+         "attributes": [
+          {
+           "key": "openinference.span.kind",
+           "value": {
+            "stringValue": "AGENT"
+           }
+          },
+          {
+           "key": "agent.name",
+           "value": {
+            "stringValue": "researcher"
+           }
+          },
+          {
+           "key": "session.id",
+           "value": {
+            "stringValue": "oi-sess-1"
+           }
+          }
+         ]
+        },
+        {
+         "traceId": "00000000000000000000000000000008",
+         "spanId": "0000000000000052",
+         "parentSpanId": "0000000000000051",
+         "name": "llm",
+         "startTimeUnixNano": "1792999971000000000",
+         "endTimeUnixNano": "1792999980000000000",
+         "attributes": [
+          {
+           "key": "openinference.span.kind",
+           "value": {
+            "stringValue": "LLM"
+           }
+          },
+          {
+           "key": "llm.model_name",
+           "value": {
+            "stringValue": "claude-haiku-4"
+           }
+          },
+          {
+           "key": "llm.system",
+           "value": {
+            "stringValue": "anthropic"
+           }
+          },
+          {
+           "key": "llm.token_count.prompt",
+           "value": {
+            "intValue": "150"
+           }
+          },
+          {
+           "key": "llm.token_count.completion",
+           "value": {
+            "intValue": "25"
+           }
+          },
+          {
+           "key": "llm.token_count.prompt_details.cache_read",
+           "value": {
+            "intValue": "50"
+           }
+          }
+         ]
+        },
+        {
+         "traceId": "00000000000000000000000000000008",
+         "spanId": "0000000000000053",
+         "parentSpanId": "0000000000000051",
+         "name": "web_search",
+         "startTimeUnixNano": "1792999981000000000",
+         "endTimeUnixNano": "1792999988000000000",
+         "attributes": [
+          {
+           "key": "openinference.span.kind",
+           "value": {
+            "stringValue": "TOOL"
+           }
+          },
+          {
+           "key": "tool.name",
+           "value": {
+            "stringValue": "web_search"
+           }
+          },
+          {
+           "key": "tool_call.id",
+           "value": {
+            "stringValue": "tc-1"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

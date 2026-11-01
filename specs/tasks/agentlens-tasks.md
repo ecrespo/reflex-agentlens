@@ -878,7 +878,7 @@ first or in the same commit (Art. 8). Branches: `feat/P3-<nn>-<slug>` from `deve
 - **REQ / design**: REQ-037.a/b, REQ-038.a, REQ-365
 - **Depends on**: P3-07.1
 - **Done**: property suite green with the CI hypothesis profile on both backends.
-- [ ]
+- [x] 2026-10-31 · PR #25
 
 ### P3-12.2 · Golden normalizer fixtures
 - **What**: `tests/golden/`: hand-written OTLP/JSON fixtures (missing parent, late root,
@@ -888,7 +888,7 @@ first or in the same commit (Art. 8). Branches: `feat/P3-<nn>-<slug>` from `deve
 - **Depends on**: P3-03.3
 - **Done**: every fixture's derived rows match the golden files; changing `MAPPING_VERSION`
   without regenerating fails.
-- [ ]
+- [x] 2026-10-31 · PR #25
 
 ### P3-13.1 · Integration tests on real endpoints
 - **What**: `tests/integration/`: the engine with HTTP and gRPC on ephemeral ports and a real
@@ -897,7 +897,7 @@ first or in the same commit (Art. 8). Branches: `feat/P3-<nn>-<slug>` from `deve
 - **REQ / design**: REQ-001…REQ-010, REQ-009.a/b, REQ-330
 - **Depends on**: P3-09.1, P3-10.1
 - **Done**: suite green on SQLite and PG in CI.
-- [ ]
+- [x] 2026-10-31 · PR #25
 
 ### P3-13.2 · Durability and cross-process tests; phase gate
 - **What**: SIGKILL-after-ack test (subprocess engine, every acknowledged span present after
@@ -906,7 +906,7 @@ first or in the same commit (Art. 8). Branches: `feat/P3-<nn>-<slug>` from `deve
 - **Depends on**: P3-13.1
 - **Done**: plan P3 Done criteria: ingest + store coverage ≥ 85 %; `mypy --strict` clean; import
   contracts kept; property, golden and integration suites green in CI.
-- [ ]
+- [x] 2026-10-31 · PR #25
 
 **Suggested batches:** (1) P3-01.1, P3-01.2, P3-01.3 · (2) P3-02.1, P3-02.2, P3-04.1 ·
 (3) P3-03.1, P3-03.2, P3-04.2 · (4) P3-03.3, P3-05.1, P3-05.2 · (5) P3-06.1, P3-06.2, P3-07.1 ·
@@ -1104,6 +1104,7 @@ the matrix). No requirement is deferred at this point.
 | 2026-10-31 | P3-06.1, 06.2, 07.1 | Done | PR #22; `write_group` with per-batch savepoints (SQLSTATE class 22/23 → `BatchRejected`, PG retries the group once on deadlock/serialization), `get_or_create_secret`; writer with a byte-bounded queue, linger/span-cap grouping, commit-latency p50; a failed group is an outage only if `ping()` also fails, otherwise batches are retried one by one and only the failing one becomes `BatchRejected(invalid_data)` (security review: no cross-tenant failure); engine thread + loop, `submit` via `run_coroutine_threadsafe`, drain on stop, supervisor (5 restarts / 10 min then down). Added `[ingest] max_clock_skew` (API §8.2, A-17). **Found**: `tests/unit/store/test_sqlite_backend.py::test_open_is_idempotent_and_never_migrates` leaks a sqlite3 connection (fails only under `-W error`, pre-existing on develop) |
 | 2026-10-31 | P3-07.2, 08.1, 08.2 | Done | PR #23; `ingest/jobs.py`: finalizer every minute and purge every `purge_interval` under `job_lock` (second holder skips), `SettingsCache` (per-Project settings + compiled rules + retention, all pricing versions, session key) dropped per Project on `settings_changed` and reloaded every 30 s (pricing changes have no event); `ingest/admission.py`: key header precedence, salted-hash check, 5 s positive cache cleared on `settings_changed`, touch ≤ 1/min, internal failure reasons; `ingest/limits.py`: lazy token buckets (oversized batch admitted from a full bucket into debt), Content-Length precheck, capped read, incremental gzip with output cap (1 GiB bomb, peak memory bounded), overload guard. Wiring into the engine/routes comes with P3-09/10 |
 | 2026-10-31 | P3-09.1, 10.1, 11.1 | Done | PR #24; `ingest/core.py` `IngestCore` per engine run (admit → decode → span bucket → normalize → commit; metric writes) reached from HTTP through the new `IngestEngine.call`, `build_engine` wires core, jobs, auth-cache watcher and gRPC; `ingest/http.py` Starlette routes (`/v1/logs` 404); `ingest/grpc.py` (LogsService not registered → UNIMPLEMENTED; RetryInfo only on retryable codes); `ingest/metrics.py`. `google.rpc.Status`/`RetryInfo` are hand-encoded (`ingest/status.py`) instead of adding googleapis-common-protos. Security review: metric attributes now get the span redaction/hook/truncation and GenAI points count against the span bucket. Dev group gained the OTLP gRPC exporter (same pins as `bench`). **Not done**: the API §3.3 demo-mode 403 row (demo mode comes with P4-06/P8-02) |
+| 2026-10-31 | P3-12.1, 12.2, 13.1, 13.2 | Done | PR #25; `tests/property/` (OTLP → normalize → `write_group` invariance under permutation, splits, grouping and duplicates, both backends), `tests/golden/` (8 OTLP/JSON scenarios, `AGENTLENS_REGEN_GOLDEN=1`, `MAPPING_VERSION` guard), `tests/integration/` (test-only Granian app with the engine in its lifespan, real HTTP/gRPC ports, PG outage through a cuttable TCP proxy with recovery < 10 s, A-04 Project deleted mid-ingest: 400 on SQLite / 401 on PG after NOTIFY, SIGKILL after ack, revocation ≤ 5 s across two processes, two collectors). Fix: a full queue answers 503 `overloaded` with `overload_retry_after`. Golden review: on a span with both dialects the response model falls back to `llm.model_name` (per-field precedence, Tech Design §5.3). **P3 gate**: 1196 passed (CI hypothesis profile, both backends), ingest + store coverage 96 %, mypy --strict clean, 6 import contracts kept |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).

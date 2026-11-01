@@ -1,0 +1,86 @@
+{
+ "description": "Children of a root that never arrives, silent past the finalization window: Run incomplete.",
+ "requests": [
+  {
+   "resourceSpans": [
+    {
+     "resource": {
+      "attributes": [
+       {
+        "key": "service.name",
+        "value": {
+         "stringValue": "svc"
+        }
+       }
+      ]
+     },
+     "scopeSpans": [
+      {
+       "scope": {
+        "name": "test.scope"
+       },
+       "spans": [
+        {
+         "traceId": "00000000000000000000000000000002",
+         "spanId": "0000000000000016",
+         "parentSpanId": "0000000000000015",
+         "name": "chat gpt-4o",
+         "startTimeUnixNano": "1792999100000000000",
+         "endTimeUnixNano": "1792999110000000000",
+         "attributes": [
+          {
+           "key": "gen_ai.operation.name",
+           "value": {
+            "stringValue": "chat"
+           }
+          },
+          {
+           "key": "gen_ai.request.model",
+           "value": {
+            "stringValue": "gpt-4o"
+           }
+          },
+          {
+           "key": "gen_ai.usage.input_tokens",
+           "value": {
+            "intValue": "10"
+           }
+          },
+          {
+           "key": "gen_ai.usage.output_tokens",
+           "value": {
+            "intValue": "5"
+           }
+          }
+         ]
+        },
+        {
+         "traceId": "00000000000000000000000000000002",
+         "spanId": "0000000000000017",
+         "parentSpanId": "0000000000000015",
+         "name": "execute_tool search",
+         "startTimeUnixNano": "1792999111000000000",
+         "endTimeUnixNano": "1792999120000000000",
+         "attributes": [
+          {
+           "key": "gen_ai.operation.name",
+           "value": {
+            "stringValue": "execute_tool"
+           }
+          },
+          {
+           "key": "gen_ai.tool.name",
+           "value": {
+            "stringValue": "search"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

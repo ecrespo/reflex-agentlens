@@ -1,0 +1,75 @@
+{
+ "description": "A plain HTTP trace without GenAI attributes: Run ok, no derived rows.",
+ "requests": [
+  {
+   "resourceSpans": [
+    {
+     "resource": {
+      "attributes": [
+       {
+        "key": "service.name",
+        "value": {
+         "stringValue": "shop"
+        }
+       }
+      ]
+     },
+     "scopeSpans": [
+      {
+       "scope": {
+        "name": "test.scope"
+       },
+       "spans": [
+        {
+         "traceId": "00000000000000000000000000000001",
+         "spanId": "0000000000000001",
+         "name": "GET /orders",
+         "startTimeUnixNano": "1792999970000000000",
+         "endTimeUnixNano": "1792999980000000000",
+         "attributes": [
+          {
+           "key": "http.request.method",
+           "value": {
+            "stringValue": "GET"
+           }
+          },
+          {
+           "key": "http.route",
+           "value": {
+            "stringValue": "/orders"
+           }
+          }
+         ]
+        },
+        {
+         "traceId": "00000000000000000000000000000001",
+         "spanId": "0000000000000002",
+         "parentSpanId": "0000000000000001",
+         "name": "SELECT orders",
+         "startTimeUnixNano": "1792999971000000000",
+         "endTimeUnixNano": "1792999975000000000",
+         "attributes": [
+          {
+           "key": "db.system.name",
+           "value": {
+            "stringValue": "postgresql"
+           }
+          }
+         ]
+        },
+        {
+         "traceId": "00000000000000000000000000000001",
+         "spanId": "0000000000000003",
+         "parentSpanId": "0000000000000001",
+         "name": "render",
+         "startTimeUnixNano": "1792999976000000000",
+         "endTimeUnixNano": "1792999979000000000"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
