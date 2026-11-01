@@ -1195,7 +1195,7 @@ from `develop`.
 - **Depends on**: P5-02.2
 - **Done**: forged, expired and foreign-key cookies → `None`; proxy headers from an untrusted
   peer are ignored; admin-group gating; property test: sign → read round-trips.
-- [ ]
+- [x] 2026-11-01 · PR #33
 
 ### P5-04.2 · Login and logout routes, CORS
 - **What**: `POST /_agentlens/auth/login` and `/logout` (404 outside `password` mode) exactly as
@@ -1208,7 +1208,7 @@ from `develop`.
 - **Done**: tests for every row of the API §4 login table, cookie flags over HTTP and HTTPS,
   open-redirect attempts, throttle timing with an injected clock, CORS preflight from a foreign
   origin refused.
-- [ ]
+- [x] 2026-11-01 · PR #33
 
 ### P5-05.1 · Graceful shutdown
 - **What**: on SIGTERM: `Health.shutting_down` (healthz 503), ingest admission closed (503 /
@@ -1449,6 +1449,7 @@ the matrix). No requirement is deferred at this point.
 | 2026-11-01 | P4-05.1, 05.2, 06.1 | Done | PR #30; `query/admin.py` `AdminService` (admin gating, Projects, API keys with plaintext only in `CreatedApiKey`, pricing versions + CSV via `store/pricing_csv.py`, unpriced models, recompute, redaction rules validated at save, preview, saved filters, demo-mode guard); `QueryService.subscribe` coalescing. Store addition `get_pricing_version` (API v1.4.2). Fix: the adversarial redaction sample was 32 KiB, not 64 KiB, and let `(a+)+$` pass the budget intermittently. **P4 gate**: `query` coverage 91-98 % per module (≥ 85 %), `mypy --strict` clean, 6 import contracts kept, 1,382 tests green on SQLite and PostgreSQL |
 | 2026-11-01 | P5-01.1, 01.2, 02.1, 02.2 | Done | PR #31; Tasks v1.4 (P5 detailed); `app/backend.py` (URL → backend, `collect` refuses SQLite), `app/policy.py` (non-loopback HTTP bind needs `auth.mode`; gRPC carries ingest only), `app/routes.py` (`Health` with a 1 s probe cache), `app/lifespan.py` `runtime()` (startup order of the P5 design notes; the ingest-loop backend shares the serving backend's change feed and origin ID), `app/bootstrap.py` (default Project + key, TTY banner or 0600 file, hashed configured key, session secret file), `app/server.py` `build_app`. An unusable SQLite path is `StorageUnavailable` (exit 5) |
 | 2026-11-01 | P5-03.1, 03.2, 03.3, 03.4 | Done | PR #32; `cli/main.py` (argparse, every API §8.3 command, exit-code mapping, `--print-config`; `collect` port 4318 through the new `load_config(command_defaults=)` layer), store `count_purgeable` (API v1.4.3), `Jobs.purge(trigger=)`, `ingest/rederive.py` (current mapping + pricing in effect now; fresh golden spans re-derive to themselves), `app/server.py` `run_server` on Granian's embedded server (the runner enters the lifespan itself so startup errors keep their exit codes; SIGTERM → health 503, engine drain, HTTP stop) and `probe_ports` (exit 3). Runtime/CLI tests isolate PostgreSQL per database. `demo` exits 2 until P8-02 |
+| 2026-11-01 | P5-04.1, 04.2 | Done | PR #33; `app/auth.py` (`standalone_viewer` for none/password/proxy, signed session cookie), `app/login.py` (login/logout routes in `password` mode, Origin/Referer guard, same-origin `next`, throttle, form parsed in-house with an 8 KiB cap), CORS pinned to one origin in `serve`/`demo` |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).

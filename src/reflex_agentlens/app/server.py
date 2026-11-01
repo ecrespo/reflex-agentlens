@@ -2,7 +2,8 @@
 
 :func:`build_app` wires the operational routes (``/healthz``, ``/readyz``) and, when this process
 ingests, the OTLP/HTTP routes onto one Starlette app whose lifespan is :func:`app.lifespan.runtime`.
-``serve`` gets its login routes in P5-04.2 and its Reflex mount in P6-11.
+``serve`` and ``demo`` add the login routes (``password`` mode) and CORS pinned to one origin;
+the Reflex mount comes with P6-11.
 """
 
 from __future__ import annotations
@@ -19,11 +20,14 @@ from typing import Any, TextIO
 from granian.constants import Interfaces
 from granian.server.embed import Server as GranianServer
 from starlette.applications import Starlette
+from starlette.middleware.cors import CORSMiddleware
 from starlette.routing import BaseRoute
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from reflex_agentlens.app.backend import Mode
+from reflex_agentlens.app.bootstrap import session_secret
 from reflex_agentlens.app.lifespan import Runtime, ingests, runtime
+from reflex_agentlens.app.login import cors_origin, login_routes
 from reflex_agentlens.app.routes import Health, health_routes
 from reflex_agentlens.core.config import AgentlensConfig
 from reflex_agentlens.core.errors import AgentlensError
@@ -87,6 +91,15 @@ def build_app(
     if ingests(cfg, mode):
         engine: IngestEngine = _LateEngine(handle)  # type: ignore[assignment]
         routes.extend(otlp_routes(engine, cfg))
+    if mode in ("serve", "demo"):
+        routes.extend(login_routes(cfg, session_secret(cfg)))  # password mode only
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=[cors_origin(cfg)],  # never "*" (Tech Design §6.1, A4)
+            allow_credentials=True,
+            allow_methods=["GET", "POST"],
+            allow_headers=["authorization", "content-type", "content-encoding", "x-agentlens-key"],
+        )
     if extra_routes is not None:
         routes.extend(extra_routes(handle))
     app.router.routes.extend(routes)
