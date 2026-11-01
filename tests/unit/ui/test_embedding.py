@@ -170,3 +170,25 @@ def test_chrome_bar_renders_with_every_range_req_130a() -> None:
     for label in ("1 h", "24 h", "7 d", "30 d"):
         assert label in rendered
     assert "load_chrome" in ChromeState.event_handlers
+
+
+def test_runs_and_trace_pages_compile_to_js(fresh_registry: None) -> None:
+    """P6-04.2, P6-05.2: the pages evaluate inside a real ``rx.App`` and compile to JS."""
+    from reflex.compiler import compiler
+
+    from reflex_agentlens.app.mount import mount
+
+    app = new_app()
+    mount(app, auth=allow, pages={"runs", "trace"})
+    for route in ("agentlens/runs", "agentlens/trace/[trace_id]"):
+        app._compile_page(route)
+        code = compiler._compile_page(app._pages[route], route)
+        assert "agentlens" in code
+    runs_js = compiler._compile_page(app._pages["agentlens/runs"], "agentlens/runs")
+    for text in ("Saved filters", "new runs", "Next page", "Include unpriced"):
+        assert text in runs_js
+    trace_js = compiler._compile_page(
+        app._pages["agentlens/trace/[trace_id]"], "agentlens/trace/[trace_id]"
+    )
+    for text in ("Load more spans", "several Projects", "Timeline"):
+        assert text in trace_js

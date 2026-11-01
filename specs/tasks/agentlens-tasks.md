@@ -1345,7 +1345,7 @@ tests under `tests/unit/ui/` (view models, URL codecs, Mermaid text, sanitizers:
 - **REQ / design**: REQ-101, 102, 131, 145.a
 - **Depends on**: P6-02.1
 - **Done**: unit tests per column and per filter (URL → `RunFilter` → URL).
-- [ ]
+- [x] 2026-11-01 · PR #37
 
 ### P6-04.2 · Runs page and live updates
 - **What**: `pages/runs.py`: table, keyset pagination, live insertion on the first page and an
@@ -1354,7 +1354,7 @@ tests under `tests/unit/ui/` (view models, URL codecs, Mermaid text, sanitizers:
 - **Depends on**: P6-04.1
 - **Done**: view-model tests of notice merging (first page vs. other pages, truncated notice →
   full refresh); page compiles (`rx.App` compile test).
-- [ ]
+- [x] 2026-11-01 · PR #37
 
 ### P6-05.1 · Waterfall view model
 - **What**: `components/waterfall_vm.py`: span tree → rows with proportional bars (offset and
@@ -1363,7 +1363,7 @@ tests under `tests/unit/ui/` (view models, URL codecs, Mermaid text, sanitizers:
 - **REQ / design**: REQ-150, 037.b (UI), Art. 7 interpretation
 - **Depends on**: P6-01.1
 - **Done**: unit tests on golden traces (bar geometry, collapse, placeholder rows).
-- [ ]
+- [x] 2026-11-01 · PR #37
 
 ### P6-05.2 · Trace page
 - **What**: `pages/trace.py`: tabs (`waterfall|graph|cost|raw`), `span=` selection, live append
@@ -1372,7 +1372,7 @@ tests under `tests/unit/ui/` (view models, URL codecs, Mermaid text, sanitizers:
 - **REQ / design**: REQ-103.b, 131, 150, API §7.2
 - **Depends on**: P6-05.1, P6-02.1
 - **Done**: compile test; view-model tests for the tab/URL state and the generic-trace case.
-- [ ]
+- [x] 2026-11-01 · PR #37
 
 ### P6-06.1 · Safe rich text
 - **What**: `components/richtext.py`: Markdown with raw HTML disabled, link-scheme allowlist
@@ -1693,6 +1693,7 @@ the matrix). No requirement is deferred at this point.
 | 2026-11-01 | P5-04.1, 04.2 | Done | PR #33; `app/auth.py` (`standalone_viewer` for none/password/proxy, signed session cookie), `app/login.py` (login/logout routes in `password` mode, Origin/Referer guard, same-origin `next`, throttle, form parsed in-house with an 8 KiB cap), CORS pinned to one origin in `serve`/`demo` |
 | 2026-11-01 | P5-05.1, 06.1, 07.1, 08.1 | Done | PR #34; graceful shutdown in-process through `run_server`'s stop event (in-flight exports 200, late 503, `/healthz` `shutting_down`; the SIGTERM → exit 0 path stays in the subprocess tests); rebuild racing late spans converges (second rebuild changes 0 Runs, views unchanged) on both backends; `core/telemetry.py` (Tech Design §7.2 metrics/spans with closed label sets, no-op recorder) + `app/selftelemetry.py` (private OTLP providers, loop check → exit 2, missing extra named, span status without exception messages); golden fixtures through `serve` and `collect` (PG) into twin Projects give identical responses and views (REQ-004.c). The OTLP HTTP exporter joins the dev group. **P5 gate**: every CLI command and every API §8.3 exit code (0–5) has an integration test; `collect` on PG and `serve` pass the health, shutdown and outage tests; 1,517 tests green on SQLite and PostgreSQL; `mypy --strict` clean; 6 import contracts kept |
 | 2026-11-01 | P6-01.1, 01.2, 02.1, 03.1, 03.2 | Done | PR #36; Tasks v1.5 and Delta `changes/2026-11-p6-ui-prep/` (A-12) merged as PR #35. Reflex-free view models in the new `reflex_agentlens.views` package (`guard`, `registry`, `chrome`, `snippets`, `tokens`) instead of `pages/_*` modules, because importing any `pages.*` module imports Reflex; new import contract (no Reflex, no UI packages in `views`). Contract 6 forbids direct `store` imports only (the `query` path is indirect by design); typing-only imports excluded. `pages/_base.py` (`AgentlensState`, `ui_event`, frame, inline states), `components/theme.py` + `chrome.py`, page frames per route, lazy `reflex_agentlens` API (`standalone_app` follows in P6-11), `app/mount.py`. Import audit in a clean subprocess; A-12 rule tested with an injected clock. Fix found on the way: a flaky P5 shutdown test now waits for five queued batches |
+| 2026-11-01 | P6-04.1, 04.2, 05.1, 05.2 | Done | PR #37. View models in `views/runs.py`, `views/trace.py`, `views/fmt.py` (not `pages/runs_vm.py` / `components/waterfall_vm.py`, same reason as batch 1); pages `pages/runs_page.py`, `pages/trace_page.py`. Live updates run as Reflex background tasks that end on the next notice after a reload or route change. Cost and raw tabs show Run totals and identifiers; the graph tab and span drawer stay placeholders until P6-07.2 / P6-06.2. Extra: page-event tests over real services on both backends |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).
