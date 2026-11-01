@@ -14,16 +14,16 @@ def test_package_exposes_version() -> None:
 
 
 def test_cli_version_prints_package_version(capsys: pytest.CaptureFixture[str]) -> None:
-    assert main([]) == 0
-    assert capsys.readouterr().out.strip() == "0.1.0.dev0"
+    assert main(["version"]) == 0
+    assert capsys.readouterr().out.splitlines()[0] == "reflex-agentlens 0.1.0.dev0"
 
 
 def test_cli_entry_point_runs_as_module() -> None:
     result = subprocess.run(
-        [sys.executable, "-m", "reflex_agentlens.cli.main"],
+        [sys.executable, "-m", "reflex_agentlens.cli.main", "version"],
         capture_output=True,
         text=True,
         check=False,
     )
     assert result.returncode == 0
-    assert result.stdout.strip() == "0.1.0.dev0"
+    assert result.stdout.splitlines()[0] == "reflex-agentlens 0.1.0.dev0"

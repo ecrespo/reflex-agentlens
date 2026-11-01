@@ -81,6 +81,22 @@ async def test_purge_by_age(db: ContractDB) -> None:
     assert again.deleted_traces_age == 0
 
 
+async def test_count_purgeable_matches_the_purge_and_deletes_nothing(db: ContractDB) -> None:
+    """REQ-092.a ``purge --dry-run`` (P5-03.2): the count the next purge by age deletes."""
+    backend = db.require_backend()
+    aged, forever = await load(db, RUNS), await load(db, RUNS)
+    await backend.update_project(forever, ProjectPatch(retention_max_age_s=0))
+    expired = [run for run in RUNS if last_span(run) < NOW_NS - 30 * DAY]
+    before = await counts(db)
+    assert await backend.count_purgeable(NOW_NS) == len(expired)
+    assert await counts(db) == before
+    assert await backend.last_purge() is None
+    report = await backend.purge_by_age(NOW_NS, batch_traces=50)
+    assert report.deleted_traces_age == len(expired)
+    assert await backend.count_purgeable(NOW_NS) == 0
+    assert len(await all_runs(db, RunQuery(frozenset({aged})))) == len(RUNS) - len(expired)
+
+
 async def test_purge_by_size(db: ContractDB) -> None:
     """REQ-091.a: oldest traces across Projects until usage <= 90 % of the limit."""
     backend = db.require_backend()

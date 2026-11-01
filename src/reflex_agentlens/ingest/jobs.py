@@ -130,15 +130,19 @@ class Jobs:
                 if len(keys) < self.finalize_limit:
                     return total
 
-    async def purge(self) -> list[PurgeReport] | None:
-        """REQ-092.a: purge by age, then by size; ``None`` if another holder runs it."""
+    async def purge(self, trigger: PurgeTrigger = "scheduled") -> list[PurgeReport] | None:
+        """REQ-092.a: purge by age, then by size; ``None`` if another holder runs it.
+
+        ``trigger="manual"`` marks a ``reflex-agentlens purge`` run in the purge log.
+        """
         async with self.store.job_lock("retention") as acquired:
             if not acquired:
                 return None
-            reports = [await self.store.purge_by_age(self.clock_ns(), self.purge_batch_traces)]
+            batch = self.purge_batch_traces
+            reports = [await self.store.purge_by_age(self.clock_ns(), batch, trigger=trigger)]
             if self.storage_size_limit is not None:
                 reports.append(
-                    await self.store.purge_by_size(self.storage_size_limit, self.purge_batch_traces)
+                    await self.store.purge_by_size(self.storage_size_limit, batch, trigger=trigger)
                 )
             return reports
 

@@ -1,7 +1,7 @@
 # Tasks — reflex-agentlens v0.1
 
 > Source specs: [Constitution](../constitution.md) v1.2 · [PRD](../prd/agentlens-v0.1.md) v1.1 ·
-> [API Spec](../api/agentlens-api-v1.md) v1.4.2 · [Tech Design](../technical/agentlens-architecture.md) v1.4 ·
+> [API Spec](../api/agentlens-api-v1.md) v1.4.3 · [Tech Design](../technical/agentlens-architecture.md) v1.4 ·
 > [Data Model](../data-model/agentlens-schema.md) v1.3 · [Implementation Plan](../plans/agentlens-phase-1.md) v1.0
 > Plan phases detailed in this revision: **P0 (spikes), P1 (foundation and `core`), P2 (store), P3 (ingest), P4 (query) and P5 (runtime, CLI)** · Generated: 2026-11-01
 > Status: `APPROVED` (P3–P5 detailing adopted under the standing authorization of 2026-10-31) · Version 1.4
@@ -1147,7 +1147,7 @@ from `develop`.
 - **Depends on**: P5-02.1
 - **Done**: each command parses; unknown key → 2 naming key and source; `--print-config` masks
   every secret; `version` prints the three versions; `--help` for every command.
-- [ ]
+- [x] 2026-11-01 · PR #32
 
 ### P5-03.2 · `db`, `keys` and `purge` commands
 - **What**: `db upgrade` (migrate, exit 0), `db status` (CURRENT | OUTDATED | NEWER plus revision
@@ -1160,7 +1160,7 @@ from `develop`.
 - **Done**: integration tests on both backends for every command and its error exits (unknown
   slug → 2, unknown key → 2, unreachable DB → 5); dry-run deletes nothing; `count_purgeable`
   contract test.
-- [ ]
+- [x] 2026-11-01 · PR #32
 
 ### P5-03.3 · `rebuild` and the span re-deriver
 - **What**: `ingest/rederive.py` `rederive(span, pricing) -> NormalizedSpan`: classification and
@@ -1173,7 +1173,7 @@ from `develop`.
 - **Depends on**: P5-03.2
 - **Done**: re-deriving a freshly normalized span is the identity (golden fixtures); a pricing
   change shows up in cost after `rebuild`; `--project` and `--since` narrow the scope.
-- [ ]
+- [x] 2026-11-01 · PR #32
 
 ### P5-03.4 · `serve`, `collect` and `demo` runners
 - **What**: `app/server.py` `run(cfg, mode)`: configuration and bind checks, then a port probe for
@@ -1184,7 +1184,7 @@ from `develop`.
 - **Depends on**: P5-03.1
 - **Done**: subprocess test: `collect` on PG answers `/healthz` and accepts an OTLP/HTTP export;
   a busy port → 3 with the port and setting named; `serve` on SQLite starts on a free port.
-- [ ]
+- [x] 2026-11-01 · PR #32
 
 ### P5-04.1 · Standalone auth: viewers and the session cookie
 - **What**: `app/auth.py`: `session_cookie(cfg, user, now)` / `read_session(cfg, cookie, now)`
@@ -1448,6 +1448,7 @@ the matrix). No requirement is deferred at this point.
 | 2026-10-31 | P4-03.1, 04.1 | Done | PR #29; `QueryService.dashboard` (nine aggregates via `asyncio.gather`, failing panels listed in `failed`, all failing → `StorageUnavailable`), `storage_status` (full-scope viewers only), `query/graph.py` (retries merged, approvals mark `interrupted`, collapse by node path above 150, LLM/tool fallback), `get_graph(full=)`. API v1.4.1 records these three details |
 | 2026-11-01 | P4-05.1, 05.2, 06.1 | Done | PR #30; `query/admin.py` `AdminService` (admin gating, Projects, API keys with plaintext only in `CreatedApiKey`, pricing versions + CSV via `store/pricing_csv.py`, unpriced models, recompute, redaction rules validated at save, preview, saved filters, demo-mode guard); `QueryService.subscribe` coalescing. Store addition `get_pricing_version` (API v1.4.2). Fix: the adversarial redaction sample was 32 KiB, not 64 KiB, and let `(a+)+$` pass the budget intermittently. **P4 gate**: `query` coverage 91-98 % per module (≥ 85 %), `mypy --strict` clean, 6 import contracts kept, 1,382 tests green on SQLite and PostgreSQL |
 | 2026-11-01 | P5-01.1, 01.2, 02.1, 02.2 | Done | PR #31; Tasks v1.4 (P5 detailed); `app/backend.py` (URL → backend, `collect` refuses SQLite), `app/policy.py` (non-loopback HTTP bind needs `auth.mode`; gRPC carries ingest only), `app/routes.py` (`Health` with a 1 s probe cache), `app/lifespan.py` `runtime()` (startup order of the P5 design notes; the ingest-loop backend shares the serving backend's change feed and origin ID), `app/bootstrap.py` (default Project + key, TTY banner or 0600 file, hashed configured key, session secret file), `app/server.py` `build_app`. An unusable SQLite path is `StorageUnavailable` (exit 5) |
+| 2026-11-01 | P5-03.1, 03.2, 03.3, 03.4 | Done | PR #32; `cli/main.py` (argparse, every API §8.3 command, exit-code mapping, `--print-config`; `collect` port 4318 through the new `load_config(command_defaults=)` layer), store `count_purgeable` (API v1.4.3), `Jobs.purge(trigger=)`, `ingest/rederive.py` (current mapping + pricing in effect now; fresh golden spans re-derive to themselves), `app/server.py` `run_server` on Granian's embedded server (the runner enters the lifespan itself so startup errors keep their exit codes; SIGTERM → health 503, engine drain, HTTP stop) and `probe_ports` (exit 3). Runtime/CLI tests isolate PostgreSQL per database. `demo` exits 2 until P8-02 |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).

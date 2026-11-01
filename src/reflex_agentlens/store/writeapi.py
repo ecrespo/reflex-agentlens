@@ -357,6 +357,9 @@ class BackendMethods(ReadMethods):
 
         return await self._purge(trigger, run)
 
+    async def count_purgeable(self, now_ns: int) -> int:
+        return await self._on_read_pool(retention.count_expired, now_ns)
+
     async def storage_usage(self) -> StorageUsage:
         return await self._on_read_pool(retention.storage_usage)
 
