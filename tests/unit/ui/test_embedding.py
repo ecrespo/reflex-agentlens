@@ -208,3 +208,30 @@ def test_runs_and_trace_pages_compile_to_js(fresh_registry: None) -> None:
     # REQ-324: strict Mermaid, no icon packs, no Font Awesome (P6-07.2)
     for prop in ('securityLevel:"strict"', "fontAwesome:false", "iconPacks:[]", "htmlLabels:false"):
         assert prop in trace_js
+
+
+CHART_TAGS = ("KpiCard", "BarChart", "StackedBarChart", "AreaChart", "DonutChart",
+              "DumbbellChart")  # fmt: skip
+
+
+def test_every_page_compiles_and_no_chart_falls_back_to_demo_data(fresh_registry: None) -> None:
+    """P6-08.1, P6-09.1: all pages compile; silverpoint draws its demo dataset when ``data`` is
+    omitted, so every chart element must carry ``data``."""
+    import re
+
+    from reflex.compiler import compiler
+
+    from reflex_agentlens.app.mount import mount
+
+    app = new_app()
+    mount(app, auth=allow)
+    tag = re.compile(r"jsx\((" + "|".join(CHART_TAGS) + r"),\{")
+    seen = 0
+    for route in sorted(app._unevaluated_pages):
+        app._compile_page(route)
+        js = compiler._compile_page(app._pages[route], route)
+        for match in tag.finditer(js):
+            props = js[match.end() : js.index("}", match.end()) + 200]
+            assert "data:" in props, f"{route}: {match.group(1)} without data"
+            seen += 1
+    assert seen >= 12  # dashboard charts, KPI cards and the Session charts

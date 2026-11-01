@@ -207,3 +207,69 @@ async def test_drawer_graph_and_replay(
     assert state.toggle_play() == TraceState.play  # type: ignore[operator]
     state.exit_replay()  # type: ignore[operator]
     assert (state.replay, state.future, state.playing) == ("", [], False)
+
+
+def _set_url(monkeypatch: pytest.MonkeyPatch, cls: type, url: str, **params: str) -> None:
+    router = SimpleNamespace(url=url, page=SimpleNamespace(params=params, path=url.split("?")[0]),
+                             session=SimpleNamespace(client_token="t1"))  # noqa: S106  # fmt: skip
+    monkeypatch.setattr(cls, "router", router, raising=False)
+
+
+@pytest.mark.usefixtures("wired")
+async def test_sessions_pages_req_160(
+    db: ContractDB, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from reflex_agentlens.pages.session_page import SessionState
+    from reflex_agentlens.pages.sessions_page import SessionsState
+
+    await setup(db, tmp_path)
+    _set_url(monkeypatch, SessionsState, "http://h/obs/sessions?project=shop&from=now-3650d")
+    sessions = SessionsState()
+    await sessions.load_sessions()
+    assert sessions.error_kind == ""
+    assert sessions.rows
+    assert sessions.rows[0].href.startswith("/obs/sessions/")
+    spec = sessions.pick_sort("runs_desc")  # type: ignore[operator]
+    assert "sort=runs_desc" in str(spec)
+
+    session_id = sessions.rows[0].session_id
+    _set_url(monkeypatch, SessionState, f"http://h/obs/sessions/{session_id}",
+             session_id=session_id)  # fmt: skip
+    session = SessionState()
+    await session.load_session()
+    assert session.error_kind == ""
+    assert session.found
+    assert session.rows
+    tokens = [p["tokens"] for p in session.series]
+    assert tokens == sorted(tokens)  # cumulative
+
+    _set_url(monkeypatch, SessionState, "http://h/obs/sessions/nope", session_id="nope")
+    missing = SessionState()
+    await missing.load_session()
+    assert (missing.found, missing.error_kind) == (False, "not_found")
+
+
+@pytest.mark.usefixtures("wired")
+async def test_dashboard_loads_and_clicks_through_req_141(
+    db: ContractDB, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from reflex_agentlens.pages.dashboard_page import DashboardState
+
+    await setup(db, tmp_path)
+    _set_url(monkeypatch, DashboardState, "http://h/obs?project=shop&from=now-3650d&live=0")
+    state = DashboardState()
+    assert await state.load_dashboard() is None  # live=0: no refresh task
+    assert state.error_kind == ""
+    assert state.failed == []
+    assert state.has_data
+    assert len(state.kpis) == 6
+    assert state.runs_by_status
+    assert state.tokens_by_model
+    row = state.tokens_by_model[0]
+    spec = state.select("model", {"seriesKey": "input", "datum": row})  # type: ignore[operator]
+    assert "/obs/runs?" in str(spec)
+    assert "model=" in str(spec)
+    assert state.select("model", {"datum": {"link": "//evil"}}) is None  # type: ignore[operator]
+
+    _set_url(monkeypatch, DashboardState, "http://h/obs?project=shop&from=now-3650d")
+    assert await DashboardState().load_dashboard() == DashboardState.watch
