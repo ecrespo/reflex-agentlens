@@ -278,7 +278,7 @@ def _dispatch(args: argparse.Namespace, cfg: AgentlensConfig, out: TextIO) -> in
             check_bind(cfg)
         if mode == "demo":
             raise UsageError("demo: the bundled sample dataset ships with plan task P8-02")
-        asyncio.run(run_server(cfg, mode, banner=out))
+        asyncio.run(run_server(cfg, mode, banner=out, ui=mode != "collect"))
         return EXIT["ok"]
     if command == "db":
         return asyncio.run(_db(cfg, args.db_command, out))

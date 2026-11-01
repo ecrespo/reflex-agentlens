@@ -8,7 +8,7 @@ opens when the host app starts.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Collection
+from collections.abc import AsyncIterator, Callable, Collection
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -25,7 +25,7 @@ from reflex_agentlens.ingest.http import otlp_routes
 from reflex_agentlens.pages import ALL_PAGES, PAGES
 from reflex_agentlens.views.registry import AuthHook, registry
 
-__all__ = ["mount", "page_route"]
+__all__ = ["install", "mount", "page_route"]
 
 _MOUNTED = "_agentlens_mounted"
 
@@ -80,6 +80,32 @@ def mount(
     nav: bool = True,
 ) -> None:
     """API §7.1. Calling it twice on one app raises ``RuntimeError``."""
+    install(
+        app, auth=auth, config=config, prefix=prefix, login_route=login_route, ingest=ingest,
+        ingest_prefix=ingest_prefix, grpc=grpc, health=health, pages=pages, demo=demo, nav=nav,
+    )  # fmt: skip
+
+
+def install(
+    app: rx.App,
+    *,
+    auth: AuthHook,
+    config: AgentlensConfig | None = None,
+    prefix: str = "/agentlens",
+    login_route: str | None = None,
+    ingest: bool = False,
+    ingest_prefix: str = "/agentlens/otlp",
+    grpc: bool = False,
+    health: bool = False,
+    pages: Collection[str] = ALL_PAGES,
+    demo: bool = False,
+    nav: bool = True,
+    wrap: Callable[[Callable[[], rx.Component]], Callable[[], rx.Component]] | None = None,
+    lifespan: bool = True,
+) -> None:
+    """:func:`mount` plus two knobs for the standalone app (P6-11): ``wrap`` puts a shell
+    around every page, and ``lifespan=False`` leaves opening storage to the caller (``serve``
+    runs the runtime itself and hands it to the registry)."""
     if getattr(app, _MOUNTED, False):
         raise RuntimeError("reflex_agentlens.mount() was already called on this app")
     if not callable(auth):
@@ -100,25 +126,27 @@ def mount(
     for name in sorted(pages):
         page = PAGES[name]
         app.add_page(
-            page.component,
+            page.component if wrap is None else wrap(page.component),
             route=page_route(prefix, page.route),
             title=f"{page.title} · agentlens",
             on_load=page.on_load,
         )
 
-    @asynccontextmanager
-    async def agentlens_lifespan() -> AsyncIterator[None]:
-        cfg = reg.config if reg.config is not None else load_config()
-        cfg = _embedded_config(cfg, ingest=ingest, grpc=grpc)
-        reg.config = cfg
-        async with runtime(cfg, "demo" if demo else "serve") as rt:
-            reg.runtime = rt
-            try:
-                yield
-            finally:
-                reg.runtime = None
+    if lifespan:
 
-    app.register_lifespan_task(agentlens_lifespan)
+        @asynccontextmanager
+        async def agentlens_lifespan() -> AsyncIterator[None]:
+            cfg = reg.config if reg.config is not None else load_config()
+            cfg = _embedded_config(cfg, ingest=ingest, grpc=grpc)
+            reg.config = cfg
+            async with runtime(cfg, "demo" if demo else "serve") as rt:
+                reg.runtime = rt
+                try:
+                    yield
+                finally:
+                    reg.runtime = None
+
+        app.register_lifespan_task(agentlens_lifespan)
 
     routes: list[BaseRoute] = []
     if health:

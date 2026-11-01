@@ -113,3 +113,26 @@ jobs:
         run: uv run python scripts/check_upgrade_head.py pg --url "$AGENTLENS_TEST_PG_URL"
       - name: pytest (PostgreSQL-backed tests)
         run: uv run pytest -m pg
+
+  standalone:
+    # P6-11.2 (DD-002): export the frontend with Bun, then boot `serve` on it and check `/`.
+    name: standalone (built frontend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4.4"
+      - run: uv sync --frozen
+      - name: export the frontend
+        run: uv run python -m reflex_agentlens._webapp.build
+      - name: serve answers / with the CSP
+        env:
+          AGENTLENS_REQUIRE_FRONTEND: "1"
+        run: uv run pytest tests/integration/cli/test_standalone_serve.py -p no:randomly -v

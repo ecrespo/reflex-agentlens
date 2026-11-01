@@ -1459,7 +1459,7 @@ tests under `tests/unit/ui/` (view models, URL codecs, Mermaid text, sanitizers:
 - **REQ / design**: REQ-192, 224, DD-002
 - **Depends on**: P6-03.2, P6-04.2, P6-05.2, P6-08.1, P6-09.1, P6-10.3
 - **Done**: compile test of the standalone app; rxconfig test (telemetry off, sitemap off).
-- [ ]
+- [x] 2026-11-01 · PR #42
 
 ### P6-11.2 · `serve` wiring and CSP
 - **What**: `serve` hosts the Reflex app next to the P5 routes on the embedded server: workdir
@@ -1471,7 +1471,7 @@ tests under `tests/unit/ui/` (view models, URL codecs, Mermaid text, sanitizers:
 - **Depends on**: P6-11.1, P5-04.2
 - **Done**: integration test of workdir preparation and port rewrite; CSP header test (no
   `unsafe-eval`, no third-party origin); `serve` with a built frontend answers `/` 200.
-- [ ]
+- [x] 2026-11-01 · PR #42
 
 ### P6-12.1 · Smoke suite
 - **What**: `tests/smoke/` (Playwright, CI job `smoke`): standalone app; a minimal host app with
@@ -1697,6 +1697,7 @@ the matrix). No requirement is deferred at this point.
 | 2026-11-01 | P6-06.1, 06.2, 07.1, 07.2 | Done | PR #38. Pure parts in `views/richtext.py`, `views/detail.py`, `views/graph.py`; Reflex parts in `components/richtext.py`, `components/drawer.py` and the trace page. Rich text: react-markdown without rehype-raw/math, `skipHtml`, one URL policy (http, https, mailto) in Python and JS, checked against each other with node when available; images become links. The raw tab is built lazily from the `raw` already in `get_span_detail` (no second `get_span_raw` call). Graph labels use a closed character set plus Mermaid entity codes. Tab, span and replay changes rewrite the URL with `history.replaceState` instead of reloading the trace. Import audit now checks the destination of symlinks/renames (reflex-mermaidjs links its asset under the working directory) |
 | 2026-11-01 | P6-08.1, 09.1 | Done | PR #39. View models `views/sessions.py`, `views/dashboard.py`; pages `sessions_page.py`, `session_page.py`, `dashboard_page.py`. silverpoint draws its demo dataset when `data` is omitted: every chart gets `data`, and a compile test over all pages enforces it. Cost values become `float` only as chart inputs; every displayed cost is formatted from the `Decimal`. Click-to-filter (REQ-141.c) keeps the Runs URLs on the server and the browser returns only a row key. Dashboard live refresh uses `subscribe(min_interval=10)` and re-resolves the viewer per step |
 | 2026-11-01 | P6-10.1, 10.2, 10.3 | Done | PR #41. View models `views/settings.py`, `views/pricing.py`, `views/redaction.py`; one tabbed `settings_page.py`. Mutations are checked in the page (admin, demo) before `AdminService` checks again; refused actions show inline and keep the page. The key plaintext lives in state only while its dialog is open. Prices are parsed as `Decimal` from text. CSV import is paste-based (no upload directory needed); file upload can come later. Pricing saves do not re-price stored calls: the done message points at Recompute. |
+| 2026-11-01 | P6-11.1, 11.2 | Done | PR #42. `app/standalone.py` (`standalone_app`, built-in auth hook, `/login` as a native POST form because `rx.el.form` always prevents the submit), `components/shell.py`, `_webapp/build.py` (export into the self-ignored `_frontend/`), `app/webserve.py`. `mount()` delegates to an internal `install()` with `wrap`/`lifespan`; `serve` builds the app with `lifespan=False`, registers its own runtime and drives Reflex's ASGI lifespan (event processor) itself. Runtime rxconfig uses in-memory state (the disk default would write per-client files) and pins CORS. CSP hashes are computed at startup from the shipped HTML (no `csp.json` yet; P7-01 may move it into the build hook). Without a build, `/` answers 503 with the build command. New CI job `standalone` (Bun 1.4.4). Playwright check on :9123: 0 console errors, 0 CSP violations, 0 foreign requests |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).

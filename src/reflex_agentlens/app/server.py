@@ -2,8 +2,9 @@
 
 :func:`build_app` wires the operational routes (``/healthz``, ``/readyz``) and, when this process
 ingests, the OTLP/HTTP routes onto one Starlette app whose lifespan is :func:`app.lifespan.runtime`.
-``serve`` and ``demo`` add the login routes (``password`` mode) and CORS pinned to one origin;
-the Reflex mount comes with P6-11.
+``serve`` and ``demo`` add the login routes (``password`` mode) and CORS pinned to one origin,
+and, from the CLI, the standalone Reflex app behind the Content-Security-Policy (P6-11.2,
+:mod:`app.webserve`): it is mounted last, so the operational, OTLP and login routes win.
 """
 
 from __future__ import annotations
@@ -15,13 +16,15 @@ import signal
 import socket
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, TextIO
 
 from granian.constants import Interfaces
 from granian.server.embed import Server as GranianServer
 from starlette.applications import Starlette
 from starlette.middleware.cors import CORSMiddleware
-from starlette.routing import BaseRoute
+from starlette.responses import PlainTextResponse
+from starlette.routing import BaseRoute, Mount, Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from reflex_agentlens.app.backend import Mode
@@ -29,10 +32,12 @@ from reflex_agentlens.app.bootstrap import session_secret
 from reflex_agentlens.app.lifespan import Runtime, ingests, runtime
 from reflex_agentlens.app.login import cors_origin, login_routes
 from reflex_agentlens.app.routes import Health, health_routes
+from reflex_agentlens.app.webserve import NOT_BUILT, CspMiddleware, Ui, asgi_lifespan, load_ui
 from reflex_agentlens.core.config import AgentlensConfig
 from reflex_agentlens.core.errors import AgentlensError
 from reflex_agentlens.ingest.engine import IngestEngine
 from reflex_agentlens.ingest.http import otlp_routes
+from reflex_agentlens.views.registry import registry
 
 __all__ = ["AppHandle", "PortInUse", "build_app", "probe_ports", "run_server"]
 
@@ -67,18 +72,30 @@ def build_app(
     banner: TextIO | None = None,
     runtime_options: dict[str, Any] | None = None,
     extra_routes: Callable[[AppHandle], list[BaseRoute]] | None = None,
+    ui: Ui | None = None,
 ) -> AppHandle:
-    """One app per process; ``runtime_options`` go to :func:`runtime` (tests: backend options)."""
+    """One app per process; ``runtime_options`` go to :func:`runtime` (tests: backend options).
+    ``ui`` (``serve``/``demo`` only) is mounted at ``/``; ``Ui(None)`` answers ``/`` with how to
+    build the frontend."""
     options = runtime_options or {}
+    ui_app = ui.app if ui is not None and mode in ("serve", "demo") else None
 
     @asynccontextmanager
     async def lifespan(_: Starlette) -> AsyncIterator[None]:
         async with runtime(cfg, mode, banner=banner, **options) as rt:
             handle.runtime = rt
+            if ui_app is not None:
+                registry().runtime = rt  # the pages reach the services through the registry
             try:
-                yield
+                if ui_app is None:
+                    yield
+                else:
+                    async with asgi_lifespan(ui_app):
+                        yield
             finally:
                 handle.runtime = None
+                if ui_app is not None:
+                    registry().runtime = None
 
     app = Starlette(lifespan=lifespan)
     handle = AppHandle(app)
@@ -102,6 +119,12 @@ def build_app(
         )
     if extra_routes is not None:
         routes.extend(extra_routes(handle))
+    if ui is not None and mode in ("serve", "demo"):
+        if ui_app is None:
+            routes.append(Route("/", lambda _: PlainTextResponse(NOT_BUILT, 503)))
+        else:
+            routes.append(Mount("/", app=ui_app))
+            app.add_middleware(CspMiddleware, cfg=cfg, script_hashes=ui.script_hashes)
     app.router.routes.extend(routes)
     return handle
 
@@ -165,12 +188,20 @@ async def run_server(
     banner: TextIO | None = None,
     runtime_options: dict[str, Any] | None = None,
     stop: asyncio.Event | None = None,
+    ui: bool = False,
+    frontend: Path | None = None,
 ) -> None:
     """Serve until SIGTERM/SIGINT (or ``stop``). Shutdown order (REQ-331): readiness and
     ``/healthz`` turn 503, ingest admission closes and the writer drains within
-    ``shutdown_grace``, gRPC stops, then the HTTP server stops and the backend closes."""
+    ``shutdown_grace``, gRPC stops, then the HTTP server stops and the backend closes.
+    ``ui=True`` (the CLI) serves the standalone frontend from ``frontend`` or the package."""
     probe_ports(cfg, mode)
-    handle = build_app(cfg, mode, banner=banner, runtime_options=runtime_options)
+    mounted = (
+        load_ui(cfg, mode, bundle=frontend, banner=banner)
+        if ui and mode in ("serve", "demo")
+        else None
+    )
+    handle = build_app(cfg, mode, banner=banner, runtime_options=runtime_options, ui=mounted)
     server = GranianServer(
         _without_lifespan(handle.app),
         address=cfg.server.http_host,
