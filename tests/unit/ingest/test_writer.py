@@ -40,6 +40,7 @@ class FakeStore:
         self.gate: asyncio.Event | None = None
         self.fail: BaseException | None = None
         self.reject: set[str] = set()
+        self.poison: set[str] = set()  # projects whose batch raises a non-database error
         self.ping_answers: list[bool] = []
         self.pings = 0
 
@@ -49,6 +50,8 @@ class FakeStore:
             await self.gate.wait()
         if self.fail is not None:
             raise self.fail
+        if any(b.project_id in self.poison for b in batches):
+            raise ValueError("unclassified")
         return [
             BatchRejected("project_not_found") if b.project_id in self.reject
             else WriteResult(len(b.spans), 0, [], 1)
@@ -106,6 +109,21 @@ async def test_rejected_batch_resolves_alone(rig: tuple[FakeStore, WriteQueue, W
     ok, bad = queue.put(nbatch("p")), queue.put(nbatch("gone"))
     assert isinstance(await asyncio.wait_for(ok, 1), WriteResult)
     assert await asyncio.wait_for(bad, 1) == BatchRejected("project_not_found")
+
+
+async def test_unclassified_failure_isolates_the_batch_not_the_group(
+    rig: tuple[FakeStore, WriteQueue, Writer],
+) -> None:
+    """A batch that raises while the database answers fails alone; storage stays available."""
+    store, queue, writer = rig
+    store.poison = {"bad"}
+    ok, bad, ok2 = queue.put(nbatch("a")), queue.put(nbatch("bad")), queue.put(nbatch("b"))
+    assert isinstance(await asyncio.wait_for(ok, 1), WriteResult)
+    assert await asyncio.wait_for(bad, 1) == BatchRejected("invalid_data")
+    assert isinstance(await asyncio.wait_for(ok2, 1), WriteResult)
+    assert writer.available
+    assert [len(g) for g in store.groups] == [3, 1, 1, 1]
+    assert queue.pending_bytes == 0
 
 
 async def test_full_queue_rejects_immediately_and_frees_after_commit(

@@ -6,9 +6,11 @@ One writer per process drains a :class:`WriteQueue` and commits each **group** o
 
 - ``WriteResult``: committed;
 - ``BatchRejected``: that batch hit a data error and was rolled back alone (DD-003);
-- exception ``StorageUnavailable``: the group failed (lost connection, I/O, …). The writer
-  marks storage unavailable, rejects what is queued, and retries ``ping()`` with backoff
-  0.5 → 5 s until the database answers again (REQ-330.a);
+- exception ``StorageUnavailable``: the group failed and ``ping()`` fails too (lost connection,
+  I/O, …). The writer marks storage unavailable, rejects what is queued, and retries ``ping()``
+  with backoff 0.5 → 5 s until the database answers again (REQ-330.a). If the database still
+  answers, the batches are retried one by one and only the one that fails again is rejected
+  (``BatchRejected("invalid_data")``), so one tenant's batch cannot fail the others;
 - exception ``ShuttingDown``: the process stopped before the batch could be committed.
 
 The queue is bounded by **bytes** (REQ-009.c, ``[ingest] queue_memory_bytes``); a batch that does
@@ -63,6 +65,10 @@ class _Item:
 
     def __post_init__(self) -> None:
         self.spans = len(self.batch.spans)
+
+
+class _Outage(Exception):
+    """The group failed and the database does not answer ``ping()``."""
 
 
 class WriteQueue:
@@ -186,27 +192,63 @@ class Writer:
     async def _commit(self, group: list[_Item]) -> None:
         started = self.clock()
         try:
-            outcomes = await self.store.write_group([item.batch for item in group])
+            outcomes = await self._write_or_isolate(group)
         except asyncio.CancelledError:
-            self.queue.release(group)
-            for item in group:
-                if not item.future.done():
-                    item.future.set_exception(ShuttingDown())
+            self._settle(group, lambda _: ShuttingDown())
             raise
-        except Exception as exc:  # the whole group failed: storage is unavailable (DD-003)
-            log.error("write group failed (%s); storage unavailable", type(exc).__name__)
-            self.queue.release(group)
-            for item in group:
-                if not item.future.done():
-                    item.future.set_exception(StorageUnavailable("commit failed; retry later"))
+        except _Outage:
+            self._settle(group, lambda _: StorageUnavailable("commit failed; retry later"))
             await self._recover()
             return
         self._latencies.append((self.clock(), self.clock() - started))
         self._prune()
+        self._settle(group, outcomes.__getitem__)
+
+    async def _write_or_isolate(self, group: list[_Item]) -> list[BatchOutcome]:
+        """Commit the group; if it fails while the database answers, commit batch by batch.
+
+        A failing group is a storage outage only when ``ping()`` fails too. Otherwise one batch
+        tripped something the savepoints did not classify, so each batch is retried alone and the
+        one that fails again is rejected; the others still commit (no cross-tenant failure).
+        """
+        try:
+            return await self.store.write_group([item.batch for item in group])
+        except Exception as exc:
+            log.error("write group failed (%s)", type(exc).__name__)
+            if not await self._reachable():
+                raise _Outage() from exc
+        outcomes: list[BatchOutcome] = []
+        for item in group:
+            try:
+                outcomes.extend(await self.store.write_group([item.batch]))
+            except Exception as exc:
+                if not await self._reachable():
+                    raise _Outage() from exc
+                log.error("batch rejected after isolation (%s)", type(exc).__name__)
+                outcomes.append(BatchRejected("invalid_data"))
+        return outcomes
+
+    async def _reachable(self) -> bool:
+        try:
+            return await self.store.ping()
+        except Exception:
+            return False
+
+    def _settle(
+        self,
+        group: list[_Item],
+        result: Callable[[int], BatchOutcome | BaseException],
+    ) -> None:
+        """Release the group's bytes and resolve each still-pending future."""
         self.queue.release(group)
-        for item, outcome in zip(group, outcomes, strict=True):
-            if not item.future.done():
-                item.future.set_result(outcome)
+        for i, item in enumerate(group):
+            if item.future.done():
+                continue
+            value = result(i)
+            if isinstance(value, BaseException):
+                item.future.set_exception(value)
+            else:
+                item.future.set_result(value)
 
     async def _recover(self) -> None:
         """REQ-330.a: refuse new work, then ping with backoff until the database answers."""
