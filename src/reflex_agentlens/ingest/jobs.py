@@ -250,15 +250,15 @@ class SettingsCache:
 
 def job_services(
     cfg: AgentlensConfig,
-    cache_for: Callable[[JobStore], SettingsCache],
+    cache_for: Callable[[EngineRuntime], SettingsCache],
     *,
     sleep: Sleep = asyncio.sleep,
     clock_ns: Callable[[], int] = time.time_ns,
 ) -> list[Service]:
     """The engine services: finalizer, purge, settings watcher and periodic refresh.
 
-    ``cache_for`` builds (or returns) the cache bound to the run's store, so the ingest routes
-    and these services share one cache per engine run.
+    ``cache_for`` returns the run's cache (``rt.app.cache``), so the ingest routes and these
+    services share one cache per engine run.
     """
     retention = cfg.retention
 
@@ -278,10 +278,10 @@ def job_services(
         await every(retention.purge_interval.total_seconds(), "purge", jobs(rt).purge, sleep)
 
     async def settings_watch(rt: EngineRuntime) -> None:
-        await cache_for(cast(JobStore, rt.store)).watch()
+        await cache_for(rt).watch()
 
     async def settings_refresh(rt: EngineRuntime) -> None:
-        cache = cache_for(cast(JobStore, rt.store))
+        cache = cache_for(rt)
         await every(SETTINGS_REFRESH_S, "settings_refresh", cache.refresh, sleep)
 
     return [finalizer, purge, settings_watch, settings_refresh]
