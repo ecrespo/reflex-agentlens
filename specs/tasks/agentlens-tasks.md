@@ -819,7 +819,7 @@ first or in the same commit (Art. 8). Branches: `feat/P3-<nn>-<slug>` from `deve
 - **Depends on**: P3-07.1, P2-09.1, P2-10.2
 - **Done**: fake-clock tests for job cadence; a second job holder skips; a settings change is
   visible to the normalizer within one refresh.
-- [ ]
+- [x] 2026-10-31 · PR #23
 
 ### P3-08.1 · Admission: API keys and auth cache
 - **What**: `ingest/admission.py`: key from `X-Agentlens-Key` > `Authorization: Bearer` (gRPC
@@ -829,7 +829,7 @@ first or in the same commit (Art. 8). Branches: `feat/P3-<nn>-<slug>` from `deve
 - **Depends on**: P3-07.2
 - **Done**: missing / malformed / unknown / revoked → 401 reason; revoked key rejected within 5 s
   (fake clock) and immediately after `settings_changed`.
-- [ ]
+- [x] 2026-10-31 · PR #23
 
 ### P3-08.2 · Limits: token buckets, body caps, overload
 - **What**: `ingest/limits.py`: per-Project request and span token buckets (`Retry-After` ≥ 1 s),
@@ -839,7 +839,7 @@ first or in the same commit (Art. 8). Branches: `feat/P3-<nn>-<slug>` from `deve
 - **Depends on**: P3-08.1
 - **Done**: bucket math with a fake clock; a 1 GiB zip bomb stops at the cap without allocating
   it; overload threshold flips 503 on and off.
-- [ ]
+- [x] 2026-10-31 · PR #23
 
 ### P3-09.1 · OTLP/HTTP routes
 - **What**: `ingest/http.py` (Starlette): `POST /v1/traces`, `/v1/metrics`; `/v1/logs` → 404;
@@ -1102,6 +1102,7 @@ the matrix). No requirement is deferred at this point.
 | 2026-10-31 | P3-03.1, 03.2, 04.2 | Done | PR #20; LLMCall/agent usage, ToolCall, Approval (vocabulary + PydanticAI deferral); hook (deep-copied view, validated result, class-only errors), content drop (`dropped_keys` incl. `event:<name>`), preview. **Deferred**: MCP elicitation (COULD): no attribute carries the user's answer |
 | 2026-10-31 | P3-03.3, 05.1, 05.2 | Done | PR #21; graph nodes (kind decided from attributes: LangGraph/OI chain nodes are `node`), Session key (A-08 HMAC), search document, `normalize_batch` in `normalize/pipeline.py` (lazy re-export: import cycle with the redaction engine); bundled pricing from litellm@187f936cb345 (651 entries, MIT checked, `NOTICE`), bootstrap, cost at the version in effect at call start. **Not done**: agent handoffs (`gen_ai.transfer.target.name`) are not derived into `explicit_parent_key` |
 | 2026-10-31 | P3-06.1, 06.2, 07.1 | Done | PR #22; `write_group` with per-batch savepoints (SQLSTATE class 22/23 → `BatchRejected`, PG retries the group once on deadlock/serialization), `get_or_create_secret`; writer with a byte-bounded queue, linger/span-cap grouping, commit-latency p50; a failed group is an outage only if `ping()` also fails, otherwise batches are retried one by one and only the failing one becomes `BatchRejected(invalid_data)` (security review: no cross-tenant failure); engine thread + loop, `submit` via `run_coroutine_threadsafe`, drain on stop, supervisor (5 restarts / 10 min then down). Added `[ingest] max_clock_skew` (API §8.2, A-17). **Found**: `tests/unit/store/test_sqlite_backend.py::test_open_is_idempotent_and_never_migrates` leaks a sqlite3 connection (fails only under `-W error`, pre-existing on develop) |
+| 2026-10-31 | P3-07.2, 08.1, 08.2 | Done | PR #23; `ingest/jobs.py`: finalizer every minute and purge every `purge_interval` under `job_lock` (second holder skips), `SettingsCache` (per-Project settings + compiled rules + retention, all pricing versions, session key) dropped per Project on `settings_changed` and reloaded every 30 s (pricing changes have no event); `ingest/admission.py`: key header precedence, salted-hash check, 5 s positive cache cleared on `settings_changed`, touch ≤ 1/min, internal failure reasons; `ingest/limits.py`: lazy token buckets (oversized batch admitted from a full bucket into debt), Content-Length precheck, capped read, incremental gzip with output cap (1 GiB bomb, peak memory bounded), overload guard. Wiring into the engine/routes comes with P3-09/10 |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).
