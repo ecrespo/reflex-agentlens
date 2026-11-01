@@ -52,7 +52,8 @@ async def test_constraint_violation_rolls_back_only_that_batch(db: ContractDB) -
     project = await db.make_project()
     good, bad = batch(project, 1), batch(project, 2)
     bad = dataclasses.replace(
-        bad, spans=(dataclasses.replace(bad.spans[0], category="bogus"),)  # type: ignore[arg-type]
+        bad,
+        spans=(dataclasses.replace(bad.spans[0], category="bogus"),),  # type: ignore[arg-type]
     )
     results = await backend.write_group([good, bad, batch(project, 3)])
     assert results[1] == BatchRejected("constraint_violation")

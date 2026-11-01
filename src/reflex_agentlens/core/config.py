@@ -159,6 +159,7 @@ class IngestConfig(_Section):
     default_span_rate: PositiveInt = 20_000
     default_span_burst: PositiveInt = 40_000
     max_attribute_value_bytes: ByteSize = 256 << 10
+    max_clock_skew: Duration = timedelta(hours=1)
     finalization_window: Duration = timedelta(minutes=5)
     regex_timeout: Duration = timedelta(milliseconds=25)
     redaction_hook: Annotated[str, Field(pattern=_HOOK_RE.pattern)] | None = None

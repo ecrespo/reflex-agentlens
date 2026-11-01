@@ -51,6 +51,7 @@ DEFAULTS = [
     ("ingest", "default_span_rate", 20_000),
     ("ingest", "default_span_burst", 40_000),
     ("ingest", "max_attribute_value_bytes", 256 * 1024),
+    ("ingest", "max_clock_skew", timedelta(hours=1)),
     ("ingest", "finalization_window", timedelta(minutes=5)),
     ("ingest", "regex_timeout", timedelta(milliseconds=25)),
     ("ingest", "redaction_hook", None),
