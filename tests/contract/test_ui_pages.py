@@ -273,3 +273,87 @@ async def test_dashboard_loads_and_clicks_through_req_141(
 
     _set_url(monkeypatch, DashboardState, "http://h/obs?project=shop&from=now-3650d")
     assert await DashboardState().load_dashboard() == DashboardState.watch
+
+
+def _settings(monkeypatch: pytest.MonkeyPatch, query: str = "") -> Any:
+    from reflex_agentlens.pages.settings_page import SettingsState
+
+    _set_url(monkeypatch, SettingsState, f"http://h/obs/settings?{query}")
+    return SettingsState()
+
+
+@pytest.mark.usefixtures("wired")
+async def test_settings_projects_and_keys_req_170(
+    db: ContractDB, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P6-10.1: create a Project and a key; the plaintext leaves the state when its dialog
+    closes and never survives a reload; revoke; delete only with the exact name."""
+    await setup(db, tmp_path)
+    state = _settings(monkeypatch, "project=shop")
+    await state.load_settings()
+    assert (state.can_view, state.can_mutate, state.error_kind) == (True, True, "")
+    assert [p.slug for p in state.projects] == ["shop"]
+
+    await state.create_project({"name": "Billing", "slug": "billing"})
+    assert state.action_error == ""
+    assert state.project_name == "Billing"  # the new Project becomes the selected one
+    await state.create_project({"name": "Billing", "slug": "billing"})
+    assert "already exists" in state.action_error
+
+    await state.create_key({"label": "ci"})
+    plaintext = state.reveal.plaintext
+    assert plaintext
+    assert plaintext in state.reveal.snippet
+    assert [k.label for k in state.keys] == ["ci"]
+    assert plaintext not in json_dumps(state.keys)  # rows carry the prefix only
+    state.close_reveal()
+    assert plaintext not in json_dumps(state.dict())
+
+    await state.create_key({"label": "again"})
+    assert state.reveal.plaintext
+    from reflex_agentlens.pages.settings_page import SettingsState
+
+    _set_url(monkeypatch, SettingsState, "http://h/obs/settings?project=billing")
+    await state.load_settings()  # a reload never shows a plaintext again
+    assert state.project_name == "Billing"
+    assert state.reveal.plaintext == ""
+
+    await state.revoke_key(state.keys[0].key_id)
+    assert state.action_error == ""
+    assert not state.keys[-1].active
+
+    await state.delete_project({"confirm": "billing"})  # wrong case: refused
+    assert "exactly" in state.action_error
+    await state.delete_project({"confirm": "Billing"})
+    assert state.action_error == ""
+    assert [p.slug for p in state.projects] == ["shop"]
+
+
+@pytest.mark.usefixtures("wired")
+async def test_settings_require_admin_and_demo_is_read_only_req_174_231b(
+    db: ContractDB, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await setup(db, tmp_path)
+    reg = reg_module.registry()
+
+    async def viewer(state: Any) -> dto.Viewer | None:
+        return dto.Viewer("bo", "Bo", is_admin=False)
+
+    reg.auth = viewer
+    state = _settings(monkeypatch)
+    await state.load_settings()
+    assert (state.can_view, state.can_mutate) == (False, False)
+    assert state.projects == []  # nothing is read for a non-admin viewer
+    await state.create_project({"name": "Sneaky", "slug": "sneaky"})
+    assert state.action_error == "Settings require admin rights."
+    assert state.error_kind == ""  # refused inline: the page stays in place
+
+    reg.auth, reg.demo = allow, True
+    reg.viewers.forget("t1")  # the hook's last answer is cached for 30 s (A-12)
+    state = _settings(monkeypatch)
+    await state.load_settings()
+    assert (state.can_view, state.can_mutate) == (True, False)
+    assert "demo" in state.access_notice
+    await state.create_key({"label": "x"})
+    assert state.reveal.plaintext == ""
+    assert "demo" in state.action_error
