@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from reflex_agentlens.core.errors import StorageUnavailable
+from reflex_agentlens.core.telemetry import recorder
 from reflex_agentlens.ingest.errors import Overloaded, ShuttingDown
 from reflex_agentlens.store.records import BatchRejected, NormalizedBatch, WriteResult
 
@@ -99,6 +100,7 @@ class WriteQueue:
         future: asyncio.Future[BatchOutcome] = asyncio.get_running_loop().create_future()
         self._items.append(_Item(batch, need, future))
         self.pending_bytes += need
+        recorder().set("agentlens.ingest.queue.bytes", self.pending_bytes)
         self._ready.set()
         self.drained.clear()
         return future
@@ -123,6 +125,7 @@ class WriteQueue:
 
     def release(self, items: Sequence[_Item]) -> None:
         self.pending_bytes -= sum(item.size for item in items)
+        recorder().set("agentlens.ingest.queue.bytes", self.pending_bytes)
         if self.pending_bytes == 0:
             self.drained.set()
 
@@ -191,8 +194,10 @@ class Writer:
 
     async def _commit(self, group: list[_Item]) -> None:
         started = self.clock()
+        rec = recorder()
         try:
-            outcomes = await self._write_or_isolate(group)
+            with rec.span("agentlens.write.commit"):
+                outcomes = await self._write_or_isolate(group)
         except asyncio.CancelledError:
             self._settle(group, lambda _: ShuttingDown())
             raise
@@ -200,7 +205,10 @@ class Writer:
             self._settle(group, lambda _: StorageUnavailable("commit failed; retry later"))
             await self._recover()
             return
-        self._latencies.append((self.clock(), self.clock() - started))
+        latency = self.clock() - started
+        self._latencies.append((self.clock(), latency))
+        rec.record("agentlens.write.commit.duration", latency)
+        rec.record("agentlens.write.group.spans", sum(len(item.batch.spans) for item in group))
         self._prune()
         self._settle(group, outcomes.__getitem__)
 

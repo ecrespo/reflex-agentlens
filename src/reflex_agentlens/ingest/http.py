@@ -23,6 +23,7 @@ from starlette.routing import Route
 
 from reflex_agentlens.core.config import AgentlensConfig
 from reflex_agentlens.core.errors import StorageUnavailable
+from reflex_agentlens.core.telemetry import outcome, recorder
 from reflex_agentlens.ingest.core import ExportResponse, IngestCore, Signal
 from reflex_agentlens.ingest.decode import Encoding
 from reflex_agentlens.ingest.engine import EngineRuntime, IngestEngine
@@ -81,10 +82,20 @@ def otlp_routes(engine: IngestEngine, cfg: AgentlensConfig, prefix: str = "") ->
         return cast(IngestCore, rt.app)
 
     async def export(request: Request, signal: Signal) -> Response:
+        rec = recorder()
+        attrs = {"protocol": "http/protobuf"}
+        with rec.span("agentlens.ingest.export", attrs):
+            response = await handle(request, signal, attrs)
+            attrs["outcome"] = outcome(response.status_code)
+        rec.add("agentlens.ingest.requests", 1, attrs)
+        return response
+
+    async def handle(request: Request, signal: Signal, attrs: dict[str, str]) -> Response:
         encoding: Encoding = "protobuf"  # error bodies before the media type is known
         try:
             check_content_length(request.headers, max_body)
             encoding = media_type(request.headers.get("content-type"))
+            attrs["protocol"] = f"http/{encoding}"
             content_encoding = request.headers.get("content-encoding", "").strip().lower()
             if content_encoding not in _ENCODINGS:
                 raise UnsupportedMediaType()

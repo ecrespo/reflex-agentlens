@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal, Protocol, cast
 
@@ -34,6 +34,7 @@ from sqlalchemy.exc import InterfaceError, OperationalError
 
 from reflex_agentlens.core.config import AgentlensConfig
 from reflex_agentlens.core.errors import NotFound, StorageUnavailable
+from reflex_agentlens.core.telemetry import recorder
 from reflex_agentlens.ingest.admission import Authenticator, KeyStore, Principal
 from reflex_agentlens.ingest.decode import Encoding, decode_metrics, decode_traces
 from reflex_agentlens.ingest.engine import EngineRuntime, EngineStore, IngestEngine, Service
@@ -42,8 +43,14 @@ from reflex_agentlens.ingest.jobs import JobStore, SettingsCache, job_services
 from reflex_agentlens.ingest.limits import OverloadGuard, RateLimiter, decode_content
 from reflex_agentlens.ingest.metrics import genai_points, normalize_metrics, scrubber
 from reflex_agentlens.ingest.normalize.pipeline import normalize_batch
+from reflex_agentlens.ingest.normalize.spans import FLAG_REDACTION_TIMEOUT, FLAG_TRUNCATED
 from reflex_agentlens.ingest.redaction.hook import load_hook
-from reflex_agentlens.store.records import BatchRejected, IngestSettings, MetricPoint
+from reflex_agentlens.store.records import (
+    BatchRejected,
+    IngestSettings,
+    MetricPoint,
+    NormalizedSpan,
+)
 
 __all__ = ["Admitted", "CoreStore", "IngestCore", "Signal", "build_engine"]
 
@@ -156,6 +163,9 @@ class IngestCore:
             if isinstance(outcome, BatchRejected):
                 log.warning("batch rejected: %s", outcome.reason)
                 raise BatchRejectedError()
+            _count_spans(result.batch.spans, outcome.inserted, outcome.duplicates)
+        if result.rejections.total:
+            recorder().add("agentlens.ingest.spans", result.rejections.total, _REJECTED)
         response = ExportTraceServiceResponse()
         if result.rejections.total:
             response.partial_success.CopyFrom(
@@ -180,6 +190,8 @@ class IngestCore:
             raise Unauthenticated("unknown") from None
         result = normalize_metrics(request, pid, scrubber(ctx))
         self.metrics_discarded += result.discarded
+        if result.discarded:
+            recorder().add("agentlens.ingest.metrics.discarded", result.discarded)
         if result.points and self.store_metrics:
             try:
                 await self.store.write_metric_points(result.points)
@@ -197,6 +209,23 @@ class IngestCore:
                 )
             )
         return response
+
+
+_REJECTED = {"outcome": "rejected"}
+
+
+def _count_spans(spans: Sequence[NormalizedSpan], inserted: int, duplicates: int) -> None:
+    """Self-telemetry span outcomes of one committed batch (Tech Design §7.2)."""
+    rec = recorder()
+    rec.add("agentlens.ingest.spans", inserted, {"outcome": "accepted"})
+    if duplicates:
+        rec.add("agentlens.ingest.spans", duplicates, {"outcome": "duplicate"})
+    truncated = sum(1 for sp in spans if sp.flags & FLAG_TRUNCATED)
+    if truncated:
+        rec.add("agentlens.ingest.spans", truncated, {"outcome": "truncated"})
+    timeouts = sum(1 for sp in spans if sp.flags & FLAG_REDACTION_TIMEOUT)
+    if timeouts:
+        rec.add("agentlens.redaction.timeouts", timeouts)
 
 
 # ── engine factory ───────────────────────────────────────────────────────────────────────────
