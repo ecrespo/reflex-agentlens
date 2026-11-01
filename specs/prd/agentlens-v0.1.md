@@ -6,10 +6,10 @@
 |---|---|
 | **Author** | Ernesto Crespo (`ecrespo`) |
 | **Status** | `APPROVED` |
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Date** | 2026-10-30 |
 | **Reviewers** | Ernesto Crespo |
-| **Last updated** | 2026-10-30 |
+| **Last updated** | 2026-11-01 |
 | **Governed by** | [`specs/constitution.md`](../constitution.md) v1.0 |
 
 Conventions used in this document:
@@ -492,7 +492,7 @@ General UI requirements:
 - **REQ-190.d** [U] THE SYSTEM SHALL namespace all its Reflex state classes and routes so that mounting it creates no name collision with host state or routes (smoke test with a host app that defines same-named states).
 
 #### REQ-191 — Host authentication hook · MUST
-- **REQ-191.a** [O] WHERE agentlens is embedded, THE SYSTEM SHALL call a host-provided auth hook on each page load and event, and expect a viewer identity (ID, display name, `is_admin`) or "unauthenticated".
+- **REQ-191.a** [O] WHERE agentlens is embedded, THE SYSTEM SHALL call a host-provided auth hook on each page load and before each event that reads or changes data, and expect a viewer identity (ID, display name, `is_admin`) or "unauthenticated". For events (not page loads) the result MAY be reused for at most 30 s, and only for the same client token.
 - **REQ-191.b** [X] IF the hook returns "unauthenticated", THEN THE SYSTEM SHALL render no agentlens data and SHALL redirect to the host-configured login route (or show a "not authorized" state if none is configured).
 - **REQ-191.c** [O] WHERE the hook also returns a set of allowed Project IDs, THE SYSTEM SHALL restrict every query and selector to those Projects.
 
@@ -852,6 +852,7 @@ Each question comes with the product constraint the PRD imposes on its answer.
 | 0.1-draft.1 | 2026-10-30 | Ernesto Crespo (with Claude) | Initial draft |
 | 1.0 | 2026-10-30 | Ernesto Crespo | Approved |
 | 1.1 | 2026-10-30 | Ernesto Crespo (with Claude) | Tech Design amendments A1 (REQ-033.c approval sources, LangGraph interrupt risk), A2 (REQ-005.a, REQ-107.a metric names), A7 (REQ-250.a recipe instrumentations). A6 pending spike S1 |
+| 1.2 | 2026-11-01 | Ernesto Crespo (with Claude) | Analyze A-12: REQ-191.a allows reusing the auth-hook result for events (≤ 30 s, same client token); page loads always call the hook (Delta `changes/2026-11-p6-ui-prep/`) |
 
 ## Approvals
 
