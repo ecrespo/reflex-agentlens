@@ -1435,14 +1435,14 @@ tests under `tests/unit/ui/` (view models, URL codecs, Mermaid text, sanitizers:
 - **Depends on**: P6-02.1
 - **Done**: view-model tests (the plaintext leaves state after the dialog closes; non-admin sees
   no mutations); compile test.
-- [ ]
+- [x] 2026-11-01 · PR #41
 
 ### P6-10.2 · Settings: pricing
 - **What**: pricing editor (versions, entries, CSV import/export, unpriced models, recompute).
 - **REQ / design**: REQ-171, 172
 - **Depends on**: P6-10.1
 - **Done**: view-model tests (CSV round trip through `AdminService`, validation messages).
-- [ ]
+- [x] 2026-11-01 · PR #41
 
 ### P6-10.3 · Settings: redaction and retention
 - **What**: redaction editor with preview (SHOULD) and the "existing data is not rewritten"
@@ -1450,7 +1450,7 @@ tests under `tests/unit/ui/` (view models, URL codecs, Mermaid text, sanitizers:
 - **REQ / design**: REQ-039.f, 173
 - **Depends on**: P6-10.1
 - **Done**: view-model tests (preview, invalid rule message); compile test.
-- [ ]
+- [x] 2026-11-01 · PR #41
 
 ### P6-11.1 · Standalone app and build module
 - **What**: `app/standalone.py` `standalone_app()` from the exported pages + navigation shell +
@@ -1696,6 +1696,7 @@ the matrix). No requirement is deferred at this point.
 | 2026-11-01 | P6-04.1, 04.2, 05.1, 05.2 | Done | PR #37. View models in `views/runs.py`, `views/trace.py`, `views/fmt.py` (not `pages/runs_vm.py` / `components/waterfall_vm.py`, same reason as batch 1); pages `pages/runs_page.py`, `pages/trace_page.py`. Live updates run as Reflex background tasks that end on the next notice after a reload or route change. Cost and raw tabs show Run totals and identifiers; the graph tab and span drawer stay placeholders until P6-07.2 / P6-06.2. Extra: page-event tests over real services on both backends |
 | 2026-11-01 | P6-06.1, 06.2, 07.1, 07.2 | Done | PR #38. Pure parts in `views/richtext.py`, `views/detail.py`, `views/graph.py`; Reflex parts in `components/richtext.py`, `components/drawer.py` and the trace page. Rich text: react-markdown without rehype-raw/math, `skipHtml`, one URL policy (http, https, mailto) in Python and JS, checked against each other with node when available; images become links. The raw tab is built lazily from the `raw` already in `get_span_detail` (no second `get_span_raw` call). Graph labels use a closed character set plus Mermaid entity codes. Tab, span and replay changes rewrite the URL with `history.replaceState` instead of reloading the trace. Import audit now checks the destination of symlinks/renames (reflex-mermaidjs links its asset under the working directory) |
 | 2026-11-01 | P6-08.1, 09.1 | Done | PR #39. View models `views/sessions.py`, `views/dashboard.py`; pages `sessions_page.py`, `session_page.py`, `dashboard_page.py`. silverpoint draws its demo dataset when `data` is omitted: every chart gets `data`, and a compile test over all pages enforces it. Cost values become `float` only as chart inputs; every displayed cost is formatted from the `Decimal`. Click-to-filter (REQ-141.c) keeps the Runs URLs on the server and the browser returns only a row key. Dashboard live refresh uses `subscribe(min_interval=10)` and re-resolves the viewer per step |
+| 2026-11-01 | P6-10.1, 10.2, 10.3 | Done | PR #41. View models `views/settings.py`, `views/pricing.py`, `views/redaction.py`; one tabbed `settings_page.py`. Mutations are checked in the page (admin, demo) before `AdminService` checks again; refused actions show inline and keep the page. The key plaintext lives in state only while its dialog is open. Prices are parsed as `Decimal` from text. CSV import is paste-based (no upload directory needed); file upload can come later. Pricing saves do not re-price stored calls: the done message points at Recompute. |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).

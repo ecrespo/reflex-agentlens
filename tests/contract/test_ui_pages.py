@@ -273,3 +273,201 @@ async def test_dashboard_loads_and_clicks_through_req_141(
 
     _set_url(monkeypatch, DashboardState, "http://h/obs?project=shop&from=now-3650d")
     assert await DashboardState().load_dashboard() == DashboardState.watch
+
+
+def _settings(monkeypatch: pytest.MonkeyPatch, query: str = "") -> Any:
+    from reflex_agentlens.pages.settings_page import SettingsState
+
+    _set_url(monkeypatch, SettingsState, f"http://h/obs/settings?{query}")
+    return SettingsState()
+
+
+@pytest.mark.usefixtures("wired")
+async def test_settings_projects_and_keys_req_170(
+    db: ContractDB, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P6-10.1: create a Project and a key; the plaintext leaves the state when its dialog
+    closes and never survives a reload; revoke; delete only with the exact name."""
+    await setup(db, tmp_path)
+    state = _settings(monkeypatch, "project=shop")
+    await state.load_settings()
+    assert (state.can_view, state.can_mutate, state.error_kind) == (True, True, "")
+    assert [p.slug for p in state.projects] == ["shop"]
+
+    await state.create_project({"name": "Billing", "slug": "billing"})
+    assert state.action_error == ""
+    assert state.project_name == "Billing"  # the new Project becomes the selected one
+    await state.create_project({"name": "Billing", "slug": "billing"})
+    assert "already exists" in state.action_error
+
+    await state.create_key({"label": "ci"})
+    plaintext = state.reveal.plaintext
+    assert plaintext
+    assert plaintext in state.reveal.snippet
+    assert [k.label for k in state.keys] == ["ci"]
+    assert plaintext not in json_dumps(state.keys)  # rows carry the prefix only
+    state.close_reveal()
+    assert plaintext not in json_dumps(state.dict())
+
+    await state.create_key({"label": "again"})
+    assert state.reveal.plaintext
+    from reflex_agentlens.pages.settings_page import SettingsState
+
+    _set_url(monkeypatch, SettingsState, "http://h/obs/settings?project=billing")
+    await state.load_settings()  # a reload never shows a plaintext again
+    assert state.project_name == "Billing"
+    assert state.reveal.plaintext == ""
+
+    await state.revoke_key(state.keys[0].key_id)
+    assert state.action_error == ""
+    assert not state.keys[-1].active
+
+    await state.delete_project({"confirm": "billing"})  # wrong case: refused
+    assert "exactly" in state.action_error
+    await state.delete_project({"confirm": "Billing"})
+    assert state.action_error == ""
+    assert [p.slug for p in state.projects] == ["shop"]
+
+
+@pytest.mark.usefixtures("wired")
+async def test_settings_require_admin_and_demo_is_read_only_req_174_231b(
+    db: ContractDB, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await setup(db, tmp_path)
+    reg = reg_module.registry()
+
+    async def viewer(state: Any) -> dto.Viewer | None:
+        return dto.Viewer("bo", "Bo", is_admin=False)
+
+    reg.auth = viewer
+    state = _settings(monkeypatch)
+    await state.load_settings()
+    assert (state.can_view, state.can_mutate) == (False, False)
+    assert state.projects == []  # nothing is read for a non-admin viewer
+    await state.create_project({"name": "Sneaky", "slug": "sneaky"})
+    assert state.action_error == "Settings require admin rights."
+    assert state.error_kind == ""  # refused inline: the page stays in place
+
+    reg.auth, reg.demo = allow, True
+    reg.viewers.forget("t1")  # the hook's last answer is cached for 30 s (A-12)
+    state = _settings(monkeypatch)
+    await state.load_settings()
+    assert (state.can_view, state.can_mutate) == (True, False)
+    assert "demo" in state.access_notice
+    await state.create_key({"label": "x"})
+    assert state.reveal.plaintext == ""
+    assert "demo" in state.action_error
+
+
+@pytest.mark.usefixtures("wired")
+async def test_settings_pricing_editor_and_csv_round_trip_req_171(
+    db: ContractDB, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P6-10.2: edit and save a new version, validation stops a bad save, the exported CSV
+    imports back as a version with the same entries, older versions are read-only."""
+    from reflex_agentlens.views.pricing import PriceRow
+
+    await setup(db, tmp_path)
+    state = _settings(monkeypatch, "tab=pricing&project=shop")
+    await state.load_settings()
+    assert state.tab == "pricing"
+    assert state.error_kind == ""
+    first = state.price_current
+    assert state.price_viewing == first
+    assert state.unpriced  # the dataset's models have no price yet
+
+    model = state.unpriced[0].model
+    state.add_unpriced(state.unpriced[0].provider, model)
+    index = len(state.price_rows) - 1
+    assert state.price_rows[index].pattern == model
+    state.set_price_cell(index, "input", "abc")
+    await state.save_pricing({"note": ""})
+    assert state.price_current == first  # nothing saved
+    assert state.price_errors == [
+        f"Row {index + 1}: Input $/1M must be a decimal number such as 2.50.",
+        f"Row {index + 1}: Output $/1M is required.",
+    ]
+    state.set_price_cell(index, "input", "1.5")
+    state.set_price_cell(index, "output", "3")
+    state.set_price_cell(index, "nope", "3")  # unknown columns are ignored
+    await state.save_pricing({"note": "dataset model"})
+    assert (state.action_error, state.price_errors) == ("", [])
+    assert state.price_current == first + 1
+    assert PriceRow(pattern=model, provider=state.price_rows[index].provider, input="1.5",
+                    output="3") in state.price_rows  # fmt: skip
+    assert model in {u.model for u in state.unpriced}  # stored calls keep their cost
+
+    spec = await state.export_pricing()
+    _, admin = reg_module.services()
+    exported = await admin.export_pricing_csv(dto.Viewer("ana", "Ana", is_admin=True))
+    assert spec is not None
+    assert "agentlens-pricing-v" in str(spec)
+    saved_rows = list(state.price_rows)
+    await state.import_pricing({"csv": exported})
+    assert state.action_error == ""
+    assert state.price_current == first + 2
+    assert state.price_rows == saved_rows  # the round trip keeps every entry
+    await state.import_pricing({"csv": "not,a,pricing,csv\n"})
+    assert state.action_error.startswith("Invalid ")
+    assert state.price_current == first + 2
+
+    await state.pick_price_version(str(first + 1))  # the version saved from the editor
+    assert state.price_viewing == first + 1
+    await state.save_pricing({})
+    assert "current version" in state.action_error
+
+    await state.recompute({"from": "now-3650d"})
+    assert state.action_error == ""
+    assert "LLM calls re-priced" in state.action_done
+    assert model not in {u.model for u in state.unpriced}
+
+
+@pytest.mark.usefixtures("wired")
+async def test_settings_redaction_and_retention_req_172_173(
+    db: ContractDB, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P6-10.3: preview the unsaved rules, an invalid regex names its row, saving says stored
+    data is not rewritten; retention saves and storage usage and the last purge are shown."""
+    from reflex_agentlens.pages.settings_page import SettingsState
+
+    await setup(db, tmp_path)
+    state = _settings(monkeypatch, "tab=redaction&project=shop")
+    await state.load_settings()
+    assert state.error_kind == ""
+    assert state.presets["secrets"] is True  # REQ-170.a: the default preset is on
+
+    state.add_pattern_row()
+    state.set_pattern(0, "name", "order_id")
+    state.set_pattern(0, "regex", r"ORD-\d+")
+    await state.run_preview({"sample": "ship ORD-1234 now"})
+    assert state.preview_error == ""
+    assert "ORD-1234" not in state.preview_out
+    assert "[REDACTED:order_id]" in state.preview_out
+
+    state.add_pattern_row()
+    state.set_pattern(1, "name", "broken")
+    state.set_pattern(1, "regex", "(unclosed")
+    await state.save_redaction()
+    assert state.action_error.startswith("Pattern rule 2: invalid regex")
+    state.remove_pattern_row(1)
+    await state.save_redaction()
+    assert state.action_error == ""
+    assert "not rewritten" in state.action_done
+
+    _set_url(monkeypatch, SettingsState, "http://h/obs/settings?tab=redaction&project=shop")
+    await state.load_settings()
+    assert [r.name for r in state.pattern_rows] == ["order_id"]  # persisted
+
+    _set_url(monkeypatch, SettingsState, "http://h/obs/settings?tab=retention&project=shop")
+    await state.load_settings()
+    assert state.retention_text == "30"
+    assert " estimated" in state.storage_usage
+    assert state.storage_counts.endswith(" spans")
+    assert state.last_purge == "No purge has run yet."
+    await state.save_retention({"days": "x"})
+    assert "whole number" in state.action_error
+    state.toggle_content()
+    await state.save_retention({"days": "7"})
+    assert state.action_error == ""
+    assert (state.retention_text, state.content_storage) == ("7", False)
+    assert [p.retention for p in state.projects] == ["7 days"]

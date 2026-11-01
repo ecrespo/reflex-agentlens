@@ -8,7 +8,7 @@ on your infra. Embed it as a page in your own app or run it standalone.
 > **Status: pre-alpha, not usable yet.** The v0.1 specification is approved and phases P0–P5
 > are built: storage on SQLite and PostgreSQL, OTLP ingest (HTTP and gRPC), the query layer, and
 > the runtime with its CLI. The UI (P6) is in progress: the Runs, Trace (span drawer, agent graph,
-> replay), Sessions and Dashboard pages are done; Settings and the standalone app come next.
+> replay), Sessions, Dashboard and Settings pages are done; the standalone app comes next.
 > Nothing is published on PyPI. See [Roadmap](#roadmap).
 
 ## Why
@@ -127,7 +127,7 @@ every pull request.
 | P3 | Ingest: OTLP/HTTP and gRPC, semconv mapping, derivation, redaction, pricing, admission and limits | Done |
 | P4 | Query: DTOs, keyset cursors, Runs/Trace/Sessions/Dashboard queries, agent graph, admin service | Done |
 | P5 | Runtime, CLI and ops: lifespan, bootstrap, standalone auth, graceful shutdown, self-telemetry | Done |
-| P6 | UI: Runs, Trace, Sessions, Dashboard (done); Settings, standalone app and CSP, smoke suite (next) | In progress — batches 1–4 of 7 |
+| P6 | UI: Runs, Trace, Sessions, Dashboard, Settings (done); standalone app and CSP, smoke suite (next) | In progress — batches 1–5 of 7 |
 | P7 | Delivery: wheel with the pre-built frontend, PyPI, container image | Planned |
 | P8 | Recipes and benchmarks | Planned |
 | P9 | Docs and site | Planned |
