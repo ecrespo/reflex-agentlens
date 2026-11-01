@@ -19,13 +19,16 @@ from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Any, TypeVar
 
 from sqlalchemy import Connection
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, DBAPIError, IntegrityError
 
+from reflex_agentlens.core.errors import NotFound
 from reflex_agentlens.store import admin, maintenance, metrics, retention, settings
 from reflex_agentlens.store.changefeed import ChangeFeed, events_for
 from reflex_agentlens.store.readapi import ReadMethods
 from reflex_agentlens.store.records import (
     ApiKeyRecord,
+    BatchRejected,
+    BatchRejectReason,
     ChangeEvent,
     ChangeKind,
     IngestSettings,
@@ -49,6 +52,7 @@ from reflex_agentlens.store.records import (
     RedactionRuleSet,
     RunKey,
     SavedFilter,
+    SecretName,
     SpanDeriver,
     StorageUsage,
     TimeRange,
@@ -128,6 +132,32 @@ class BackendMethods(ReadMethods):
             affected_runs=outcome.affected_runs,
             committed_at_ns=self._clock(),
         )
+
+    async def _write_group_and_publish(
+        self, batches: Sequence[NormalizedBatch]
+    ) -> list[WriteResult | BatchRejected]:
+        """API v1.3 §5.1: one transaction, one SAVEPOINT per batch; events for committed ones."""
+        if not batches:
+            return []
+        outcomes: list[WriteOutcome | BatchRejected] = await self._commit_and_publish(
+            _group_events, _write_group_tx, list(batches), self._clock(),
+            self.finalization_window_ns,
+        )  # fmt: skip
+        committed = self._clock()
+        return [
+            o if isinstance(o, BatchRejected)
+            else WriteResult(o.inserted, o.duplicates, o.affected_runs, committed)
+            for o in outcomes
+        ]  # fmt: skip
+
+    async def write_group(
+        self, batches: Sequence[NormalizedBatch]
+    ) -> list[WriteResult | BatchRejected]:
+        return await self._write_group_and_publish(batches)
+
+    async def get_or_create_secret(self, name: SecretName) -> bytes:
+        """``app_meta`` secret shared by every process on the database (Data Model §2.1, A-08)."""
+        return bytes.fromhex(await self._on_writer(settings.get_or_create_secret, name))
 
     # ── metric points (P2-07.4) ──────────────────────────────────────────────────────────────
 
@@ -353,6 +383,49 @@ def _write_batch_tx(
     conn: Connection, batch: NormalizedBatch, now_ns: int, window_ns: int
 ) -> WriteOutcome:
     return write_batch(conn, batch, now_ns=now_ns, window_ns=window_ns)
+
+
+def _write_group_tx(
+    conn: Connection, batches: list[NormalizedBatch], now_ns: int, window_ns: int
+) -> list[WriteOutcome | BatchRejected]:
+    """Each batch in its own SAVEPOINT; a data error rolls back only that batch (DD-003)."""
+    out: list[WriteOutcome | BatchRejected] = []
+    for batch in batches:
+        savepoint = conn.begin_nested()
+        try:
+            outcome = write_batch(conn, batch, now_ns=now_ns, window_ns=window_ns)
+        except NotFound:
+            savepoint.rollback()
+            out.append(BatchRejected("project_not_found"))
+        except DBAPIError as exc:
+            reason = _data_error(exc)
+            if reason is None:
+                raise  # not a data error: the whole group fails
+            savepoint.rollback()
+            out.append(BatchRejected(reason))
+        else:
+            savepoint.commit()
+            out.append(outcome)
+    return out
+
+
+def _data_error(exc: DBAPIError) -> BatchRejectReason | None:
+    """DD-003: integrity (SQLSTATE class 23) and data exceptions (class 22) reject one batch.
+
+    asyncpg errors reach SQLAlchemy as a plain ``DBAPIError`` carrying the SQLSTATE, so the
+    class is read from it; SQLite raises the typed ``IntegrityError`` / ``DataError``.
+    """
+    state = str(getattr(exc.orig, "sqlstate", None) or getattr(exc.orig, "pgcode", None) or "")
+    if isinstance(exc, IntegrityError) or state.startswith("23"):
+        return "constraint_violation"
+    if isinstance(exc, DataError) or state.startswith("22"):
+        return "invalid_data"
+    return None
+
+
+def _group_events(outcomes: list[WriteOutcome | BatchRejected], at: int) -> list[ChangeEvent]:
+    keys = [k for o in outcomes if isinstance(o, WriteOutcome) for k in o.affected_runs]
+    return events_for("spans_committed", keys, at)
 
 
 def _purged(result: retention.PurgeBatch, at: int) -> list[ChangeEvent]:
