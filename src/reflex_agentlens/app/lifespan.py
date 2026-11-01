@@ -36,7 +36,7 @@ from reflex_agentlens.query.admin import AdminService
 from reflex_agentlens.query.service import QueryService
 from reflex_agentlens.store.records import SchemaStatus
 
-__all__ = ["Runtime", "SchemaMismatch", "prepare_schema", "runtime"]
+__all__ = ["Runtime", "SchemaMismatch", "ingests", "prepare_schema", "runtime"]
 
 UPGRADE_HINT = "the database schema is outdated; run `reflex-agentlens db upgrade`"
 NEWER_HINT = (
@@ -72,7 +72,8 @@ async def prepare_schema(backend: Backend, cfg: AgentlensConfig) -> None:
         raise SchemaMismatch(NEWER_HINT)
 
 
-def _ingests(cfg: AgentlensConfig, mode: Mode) -> bool:
+def ingests(cfg: AgentlensConfig, mode: Mode) -> bool:
+    """Whether this process runs the ingest engine (and so the OTLP routes)."""
     return mode in ("serve", "collect") and cfg.server.ingest_enabled and not cfg.demo.enabled
 
 
@@ -100,7 +101,7 @@ async def runtime(
                 announce(cfg, boot, banner)
 
         engine: IngestEngine | None = None
-        if _ingests(cfg, mode):
+        if ingests(cfg, mode):
 
             async def open_store() -> EngineStore:
                 store = make_backend(cfg, **options)
