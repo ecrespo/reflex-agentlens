@@ -38,6 +38,7 @@ ORDER = ["Breaking changes", "Added", "Changed", "Fixed", "Performance", "Packag
 _SUBJECT = re.compile(r"^(?P<type>[a-z]+)(?:\((?P<scope>[^)]+)\))?(?P<bang>!)?: (?P<text>.+)$")
 _TASK = re.compile(r"\s*\((?:P\d+-\d+(?:\.\d+)?(?:,\s*)?)+\)\s*$")  # trailing "(P7-01.1)"
 _SEP_FIELD, _SEP_RECORD = "\x1f", "\x1e"
+REPO = Path(__file__).resolve().parents[1]
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,7 +105,7 @@ def insert(changelog: str, section: str, version: str) -> str:
 def _git(*args: str) -> str:
     return subprocess.run(  # noqa: S603 - fixed argv
         ["git", *args],  # noqa: S607 - git from PATH, as in every developer and CI shell
-        check=True, capture_output=True, text=True,
+        check=True, capture_output=True, text=True, cwd=REPO,
     ).stdout  # fmt: skip
 
 
