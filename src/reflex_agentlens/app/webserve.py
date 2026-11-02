@@ -6,7 +6,9 @@ The recipe of spike S1 (Tech Design §11.1), in the order ``serve`` runs it:
 1. :func:`prepare_workdir` copies the exported bundle to ``{data_dir}/web/<version>/.web/build/
    client``, writes the runtime ``rxconfig.py`` (telemetry off, CORS pinned), rewrites the backend
    origin compiled into ``assets/reflex-env-*.js`` (``localhost:8000``) and regenerates its
-   precompressed sibling, and hashes every inline ``<script>`` of the shipped HTML (DD-018).
+   precompressed sibling, and takes the inline-script hashes of the shipped HTML from the
+   bundle's ``csp.json`` (written by the wheel build hook), hashing the HTML itself when the file
+   is missing (DD-018).
 2. :func:`enter_workdir` sets the Reflex environment and ``chdir``s there **before** Reflex is
    imported, so its import-time writes (``assets/external``, ``.states``) land in the data
    directory (DD-002 consequence 4).
@@ -20,10 +22,8 @@ Nothing here needs Node or Bun. Without a built frontend, :func:`load_ui` says h
 from __future__ import annotations
 
 import asyncio
-import base64
 import contextlib
 import gzip
-import hashlib
 import os
 import re
 import shutil
@@ -37,7 +37,14 @@ from urllib.parse import urlsplit
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from reflex_agentlens import __version__
-from reflex_agentlens._webapp.build import frontend_dir, rxconfig_source
+from reflex_agentlens._webapp.build import (
+    CSP_FILE,
+    bundle_script_hashes,
+    frontend_dir,
+    inline_script_hashes,
+    read_csp,
+    rxconfig_source,
+)
 from reflex_agentlens.app.backend import Mode
 from reflex_agentlens.app.login import cors_origin
 from reflex_agentlens.core.config import AgentlensConfig
@@ -65,7 +72,6 @@ NOT_BUILT = (
     "In a source checkout, build it with `uv run python -m reflex_agentlens._webapp.build` "
     "(needs Bun or Node), then restart `serve`. Released wheels and images include it."
 )
-_INLINE_SCRIPT = re.compile(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", re.S | re.I)
 _HOST = re.compile(r"^(?:[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*|\[[0-9A-Fa-f:.]+\])(?::\d{1,5})?$")
 _PRECOMPRESSED = (".gz", ".br", ".zst")
 
@@ -90,15 +96,6 @@ def bundle_dir(path: Path | None = None) -> Path | None:
     """The exported frontend (``reflex_agentlens/_frontend`` by default), if it is built."""
     candidate = path if path is not None else frontend_dir()
     return candidate if (candidate / "index.html").is_file() else None
-
-
-def inline_script_hashes(html: str) -> list[str]:
-    """CSP source expressions (``'sha256-…'``) for every inline ``<script>`` of ``html``."""
-    out = []
-    for body in _INLINE_SCRIPT.findall(html):
-        digest = base64.b64encode(hashlib.sha256(body.encode()).digest()).decode()
-        out.append(f"'sha256-{digest}'")
-    return out
 
 
 def _backend_origins(cfg: AgentlensConfig) -> tuple[str, str, str]:
@@ -131,11 +128,10 @@ def rewrite_backend_origin(client: Path, cfg: AgentlensConfig) -> int:
     return count
 
 
-def _hashes(client: Path) -> tuple[str, ...]:
-    found: set[str] = set()
-    for page in client.rglob("*.html"):
-        found.update(inline_script_hashes(page.read_text(encoding="utf-8")))
-    return tuple(sorted(found))
+def _hashes(bundle: Path, client: Path) -> tuple[str, ...]:
+    """``csp.json`` when the bundle ships one (wheel builds), else the HTML hashed here."""
+    shipped = read_csp(bundle)
+    return shipped if shipped is not None else bundle_script_hashes(client)
 
 
 def prepare_workdir(cfg: AgentlensConfig, bundle: Path, *, version: str = __version__) -> Workdir:
@@ -148,10 +144,10 @@ def prepare_workdir(cfg: AgentlensConfig, bundle: Path, *, version: str = __vers
     if client.exists():
         shutil.rmtree(client)
     client.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(bundle, client, ignore=shutil.ignore_patterns(".gitignore"))
+    shutil.copytree(bundle, client, ignore=shutil.ignore_patterns(".gitignore", CSP_FILE))
     (root / "rxconfig.py").write_text(rxconfig_source(cors_origin=cors_origin(cfg)))
     rewritten = rewrite_backend_origin(client, cfg)
-    return Workdir(root, client, _hashes(client), rewritten)
+    return Workdir(root, client, _hashes(bundle, client), rewritten)
 
 
 def reflex_env(workdir: Workdir) -> dict[str, str]:

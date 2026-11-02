@@ -9,7 +9,9 @@ on your infra. Embed it as a page in your own app or run it standalone.
 > are built: storage on SQLite and PostgreSQL, OTLP ingest (HTTP and gRPC), the query layer, the
 > runtime with its CLI, and the UI (Dashboard, Runs, Trace with span drawer, agent graph and
 > replay, Sessions, Settings), served standalone by `serve` with a Content-Security-Policy or
-> embedded in a host Reflex app. Packaging (P7) comes next; nothing is published on PyPI yet.
+> embedded in a host Reflex app. Packaging (P7) is in progress: the wheel now ships the
+> pre-built frontend and boots without Node or Bun; the container image and compose files come
+> next. Nothing is published on PyPI yet.
 > See [Roadmap](#roadmap).
 
 ## Why
@@ -98,7 +100,7 @@ uv run ruff format --check    # formatting
 uv run mypy                   # strict type checking
 uv run lint-imports           # layer and import contracts
 uv run python scripts/check_req_coverage.py --report-only   # MUST criteria cited by tests
-uv build                      # sdist + wheel
+uv build                      # sdist + wheel (the wheel hook exports the frontend: needs Bun)
 uv run reflex-agentlens --help   # CLI: serve, collect, demo, db, rebuild, purge, keys, version
 ```
 
@@ -111,6 +113,11 @@ uv run reflex-agentlens serve                     # UI and OTLP/HTTP on http://1
 ```
 
 Without the export, `serve` still runs the API and OTLP routes and `/` explains how to build the UI.
+
+`uv build` runs a build hook (`hatch_build.py`) that exports the same frontend into the wheel,
+together with `csp.json` (the hashes of its inline scripts), so an installed wheel needs no JS
+runtime. `uv sync` (editable) skips it, and `AGENTLENS_SKIP_FRONTEND=1` builds a wheel without
+the UI. Building a wheel from the sdist also needs Bun 1.4.4 or Node.
 
 Tests marked `pg` run only when `AGENTLENS_TEST_PG_URL` points at a PostgreSQL ≥ 15 server; each
 test works in its own throwaway schema:
@@ -126,8 +133,9 @@ full workflow and [AGENTS.md](AGENTS.md) for coding-agent guidance.
 
 CI (GitHub Actions) runs lint, types, the import contracts and the traceability report; the tests
 on Python 3.11–3.13 with SQLite and against PostgreSQL 15 and 18; a `smoke` job that exports the
-frontend, boots `serve` and drives it (and a host app that mounts agentlens) in Chromium; and
-gitleaks plus pip-audit on every pull request. Run the smoke suite locally with
+frontend, boots `serve` and drives it (and a host app that mounts agentlens) in Chromium; a
+`wheel` job that builds the wheel and the sdist and boots the wheel in a fresh venv with no Node or
+Bun on `PATH` (UI and ingest within 30 s); and gitleaks plus pip-audit on every pull request. Run the smoke suite locally with
 `AGENTLENS_SMOKE=1 uv run pytest tests/smoke` after building the frontend.
 
 ## Roadmap
@@ -141,7 +149,7 @@ gitleaks plus pip-audit on every pull request. Run the smoke suite locally with
 | P4 | Query: DTOs, keyset cursors, Runs/Trace/Sessions/Dashboard queries, agent graph, admin service | Done |
 | P5 | Runtime, CLI and ops: lifespan, bootstrap, standalone auth, graceful shutdown, self-telemetry | Done |
 | P6 | UI: Runs, Trace, Sessions, Dashboard, Settings; standalone app and CSP; browser smoke suite; [silverpoint issue drafts](docs/upstream-issues.md) | Done |
-| P7 | Delivery: wheel with the pre-built frontend, PyPI, container image | Planned |
+| P7 | Delivery: wheel with the pre-built frontend, PyPI, container image, compose files | In progress — wheel done |
 | P8 | Recipes and benchmarks | Planned |
 | P9 | Docs and site | Planned |
 | P10 | Release | Planned |

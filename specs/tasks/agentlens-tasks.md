@@ -3,8 +3,8 @@
 > Source specs: [Constitution](../constitution.md) v1.2 · [PRD](../prd/agentlens-v0.1.md) v1.2 ·
 > [API Spec](../api/agentlens-api-v1.md) v1.4.4 · [Tech Design](../technical/agentlens-architecture.md) v1.4 ·
 > [Data Model](../data-model/agentlens-schema.md) v1.3 · [Implementation Plan](../plans/agentlens-phase-1.md) v1.0
-> Plan phases detailed in this revision: **P0 (spikes), P1 (foundation and `core`), P2 (store), P3 (ingest), P4 (query), P5 (runtime, CLI) and P6 (UI)** · Generated: 2026-11-01
-> Status: `APPROVED` (P3–P6 detailing adopted under the standing authorization of 2026-10-31) · Version 1.5
+> Plan phases detailed in this revision: **P0 (spikes), P1 (foundation and `core`), P2 (store), P3 (ingest), P4 (query), P5 (runtime, CLI), P6 (UI) and P7 (delivery)** · Generated: 2026-11-01
+> Status: `APPROVED` (P3–P7 detailing adopted under the standing authorization of 2026-10-31) · Version 1.6
 
 ## How this file works
 
@@ -1497,7 +1497,139 @@ P6-10.2, P6-10.3 · (6) P6-11.1, P6-11.2 · (7) P6-12.1, P6-13.1.
 
 ---
 
-## Phases P7–P10 — to be detailed at phase start
+## Phase P7 — Delivery
+
+Detailed 2026-11-01 after P6. Inputs: PRD v1.2 REQ-072.b, 200.b, 203–206, 210, 326, 364; Tech
+Design v1.4 DD-002, DD-018, DD-021, DD-022, §9.1, §11.1 (S1 results, `spikes/s1/NOTES.md`
+P0-02.2 and P0-03.1). Branches: `feat/P7-<nn>-<slug>` from `develop`.
+
+**Design notes.**
+- **One export path.** The wheel hook calls the same `export()` as
+  `python -m reflex_agentlens._webapp.build` (P6-11.1). It loads `build.py` by file path, because
+  the isolated build environment does not have the package installed (S1). Editable installs skip
+  the export (`uv sync` needs no JS runtime); `AGENTLENS_SKIP_FRONTEND=1` builds a wheel without
+  the frontend for fast jobs.
+- **CSP hashes ship with the bundle.** The hook writes `_frontend/csp.json` (the sorted
+  inline-script hashes of every exported `*.html`). `serve` reads it when present and falls back
+  to hashing at startup (dev checkouts). Hashes never live in the source tree (DD-018, S1).
+- **sdist (S1 open question).** The sdist carries `src/` (including `_webapp/`) and the hook;
+  building a wheel from it needs Bun 1.4.4 (or Node), as documented in the README. Releases
+  publish the wheel built in CI, so `pip`/`uv` users never build from the sdist.
+- **Maintainer-only steps.** Creating the PyPI trusted publisher and the GHCR package, pushing a
+  `v*` tag and publishing `0.1.0a1` are outward-facing: the tasks below prepare and test them
+  without performing them (plan §5 prerequisite inputs).
+
+### P7-01.1 · Wheel build hook and `csp.json`
+- **What**: `hatch_build.py` at the repo root (`[tool.hatch.build.targets.wheel.hooks.custom]`
+  with Reflex and the UI packages as hook dependencies) runs `_webapp.build.export` into a
+  temporary build dir and force-includes it as `reflex_agentlens/_frontend/`; writes
+  `csp.json`; skips editable builds and honours `AGENTLENS_SKIP_FRONTEND=1`. `webserve` reads
+  `csp.json` when present.
+- **REQ / design**: REQ-200.b, DD-002, DD-018, DD-022
+- **Depends on**: P6-11.2
+- **Done**: unit tests of `csp.json` writing/reading and of the skip rules; `uv build --wheel`
+  produces a wheel with `_frontend/index.html` and `_frontend/csp.json`.
+- [x] 2026-11-01 · PR #44
+
+### P7-01.2 · Wheel boot test without a JS runtime
+- **What**: `tests/packaging/test_wheel_boot.py` (marker `packaging`, needs
+  `AGENTLENS_WHEEL=<path>`): installs the wheel into a fresh venv with `uv`, starts `serve` with
+  a `PATH` that holds no `node`/`bun`, and checks `/` 200 with the CSP from `csp.json`, an OTLP
+  span accepted, and both within 30 s of the process start. CI job `wheel` (Bun 1.4.4 for the
+  build only) builds the wheel and the sdist and runs the test.
+- **REQ / design**: REQ-200.b, 210.b, DD-002
+- **Depends on**: P7-01.1
+- **Done**: `wheel` job green in CI.
+- [x] 2026-11-01 · PR #44
+
+### P7-02.1 · Dockerfile
+- **What**: multi-stage `Dockerfile` per DD-021 (uv + Python 3.13 + Bun 1.4.4 builder running
+  `uv sync --frozen --no-dev --no-editable`; `python:3.13-slim` runtime with the venv only,
+  UID/GID 10001, `/data` volume, `HEALTHCHECK` with `python -c` on `/healthz`,
+  `ENTRYPOINT ["reflex-agentlens"]`, `CMD ["serve"]`), `.dockerignore`, `.hadolint.yaml`.
+- **REQ / design**: REQ-203, 326, DD-021
+- **Depends on**: P7-01.1
+- **Done**: `hadolint` clean; local `docker build` and `docker run` reach healthy.
+- [ ]
+
+### P7-02.2 · Image checks in CI
+- **What**: CI job `docker`: buildx build (amd64), `trivy image` (fails on unwaived CRITICAL findings; waivers in `.trivyignore` with a reason),
+  `hadolint`, run with `--read-only` (+ tmpfs `/tmp`, volume `/data`) to healthy, assert no
+  `node`/`bun`/`gcc` in the image, non-root user, size ≤ 500 MB (SHOULD: warning above).
+  `tests/docker/test_image.py` (marker `docker`, needs `AGENTLENS_IMAGE`).
+- **REQ / design**: REQ-203, 326, 364
+- **Depends on**: P7-02.1
+- **Done**: `docker` job green in CI.
+- [ ]
+
+### P7-03.1 · `compose.yaml` (try it)
+- **What**: `compose.yaml` per DD-021 T2 (SQLite volume `agentlens-data:/data`, ports bound to
+  `127.0.0.1`, `AGENTLENS_AUTH_MODE=none` set explicitly); `tests/docker/test_compose.py`:
+  `up --wait` → healthy → OTLP span sent with the bootstrap key → the Run is returned by the
+  run-list query. Runs in the `docker` job.
+- **REQ / design**: REQ-204, 364
+- **Depends on**: P7-02.2
+- **Done**: compose test green in CI.
+- [ ]
+
+### P7-03.2 · 60-second time-to-first-Run test
+- **What**: the compose test sends the recorded PydanticAI fixture (P8-03) instead of a synthetic
+  span and asserts `up` → Run visible in the run-list query ≤ 60 s.
+- **REQ / design**: REQ-210.a, 364
+- **Depends on**: P7-03.1, P8-03
+- **Done**: compose test with the recorded fixture green in CI, timing reported.
+- [ ]
+
+### P7-04.1 · `compose.postgres.yaml` and `Caddyfile`
+- **What**: DD-021 T3: PostgreSQL 18 (volume), `app` (`serve`, `ingest_enabled=false`,
+  `auto_migrate`), `collector` (`collect`, waits for schema CURRENT through `/readyz`), Caddy
+  (only service with published ports; automatic HTTPS, `tls internal` via an env switch for CI;
+  `/v1/*` and gRPC h2c to collectors, the rest and WebSockets to `app`). Secrets from env files,
+  none in the repo.
+- **REQ / design**: REQ-205, 072.b, DD-021
+- **Depends on**: P7-02.1
+- **Done**: `docker compose -f compose.postgres.yaml config` valid; local `up` to healthy.
+- [ ]
+
+### P7-04.2 · Production compose test
+- **What**: `tests/docker/test_compose_postgres.py`: `up --wait --scale collector=2` with
+  `tls internal`; sends N spans through Caddy over OTLP/HTTP and gRPC; asserts every span stored
+  exactly once (no loss, no duplicates) and the UI answers through Caddy. Runs in the `docker`
+  job.
+- **REQ / design**: REQ-205, 364, 072.b
+- **Depends on**: P7-04.1, P7-02.2
+- **Done**: test green in CI.
+- [ ]
+
+### P7-05.1 · Release workflow and changelog
+- **What**: `.github/workflows/release.yml` on `v*` tags reachable from `main`: build wheel +
+  sdist (`uv build`), run the wheel boot test, publish to PyPI with trusted publishing
+  (`pypa/gh-action-pypi-publish`, environment `pypi`, `id-token: write`), build and push GHCR
+  multi-arch (`amd64`, `arm64`) with tags `X.Y.Z`, `X.Y`, `latest` (pre-releases get only their
+  own tag), GitHub release with the changelog section. `CHANGELOG.md` section generated from
+  Conventional Commits by `scripts/changelog.py`. A `workflow_dispatch` dry run builds
+  everything without publishing.
+- **REQ / design**: REQ-206, Art. 10, §9.1
+- **Depends on**: P7-02.2
+- **Done**: unit tests of `scripts/changelog.py`; dry-run job green; `actionlint` clean.
+  Publishing is verified in P7-06.1.
+- [ ]
+
+### P7-06.1 · Milestone M2: `0.1.0a1`
+- **What**: maintainer creates the PyPI trusted publisher and GHCR permissions, bumps to
+  `0.1.0a1`, tags `v0.1.0a1` on `main`; smoke check `uvx reflex-agentlens==0.1.0a1 serve` on a
+  clean machine and `docker run ghcr.io/ecrespo/reflex-agentlens:0.1.0-alpha.1`.
+- **REQ / design**: §9.1, REQ-206
+- **Depends on**: P7-01.1 … P7-05.1, maintainer prerequisites (plan §5)
+- **Done**: both artifacts installable; M2 recorded in the execution log.
+- [ ]
+
+**Suggested batches:** (1) P7-01.1, P7-01.2 · (2) P7-02.1, P7-02.2, P7-03.1 · (3) P7-04.1,
+P7-04.2 · (4) P7-05.1 · then P7-03.2 after P8-03, and P7-06.1 by the maintainer.
+
+---
+
+## Phases P8–P10 — to be detailed at phase start
 
 Each phase gets its atomic tasks in a new revision of this file when the previous phase's Done
 criteria are met. The plan tasks, their scope, estimates and dependencies are fixed in the
@@ -1505,7 +1637,6 @@ criteria are met. The plan tasks, their scope, estimates and dependencies are fi
 
 | Phase | Plan tasks | Detailed when | Prerequisite inputs |
 |---|---|---|---|
-| P7 Delivery | P7-01 … P7-06 | P6-11 done | PyPI trusted publisher, GHCR |
 | P8 Recipes/bench | P8-01 … P8-06 | P3 done | Reference machine (P8-06) |
 | P9 Docs/site | P9-01 … P9-06 | P6-11 done | Q-T1 (P9-05 only) |
 | P10 Release | P10-01 … P10-05 | P9-04 done, P8-06 done | — |
@@ -1699,6 +1830,7 @@ the matrix). No requirement is deferred at this point.
 | 2026-11-01 | P6-10.1, 10.2, 10.3 | Done | PR #41. View models `views/settings.py`, `views/pricing.py`, `views/redaction.py`; one tabbed `settings_page.py`. Mutations are checked in the page (admin, demo) before `AdminService` checks again; refused actions show inline and keep the page. The key plaintext lives in state only while its dialog is open. Prices are parsed as `Decimal` from text. CSV import is paste-based (no upload directory needed); file upload can come later. Pricing saves do not re-price stored calls: the done message points at Recompute. |
 | 2026-11-01 | P6-11.1, 11.2 | Done | PR #42. `app/standalone.py` (`standalone_app`, built-in auth hook, `/login` as a native POST form because `rx.el.form` always prevents the submit), `components/shell.py`, `_webapp/build.py` (export into the self-ignored `_frontend/`), `app/webserve.py`. `mount()` delegates to an internal `install()` with `wrap`/`lifespan`; `serve` builds the app with `lifespan=False`, registers its own runtime and drives Reflex's ASGI lifespan (event processor) itself. Runtime rxconfig uses in-memory state (the disk default would write per-client files) and pins CORS. CSP hashes are computed at startup from the shipped HTML (no `csp.json` yet; P7-01 may move it into the build hook). Without a build, `/` answers 503 with the build command. New CI job `standalone` (Bun 1.4.4). Playwright check on :9123: 0 console errors, 0 CSP violations, 0 foreign requests |
 | 2026-11-01 | P6-12.1, 13.1 | Done | PR #43. **P6 complete.** `tests/smoke/` (marker `smoke`, gated by `AGENTLENS_SMOKE=1`): standalone `serve` seeded over OTLP/HTTP with an XSS Run, plus a host app (`tests/smoke/host`, colliding state names and routes, `reflex run --env prod --single-port`, ~2.5 min to build). A `Watch` records console errors, CSP violations (init-script probe), dialogs and requests outside the origin. The CI job `standalone` became `smoke`. Drafts for the four DD-017 issues in `docs/upstream-issues.md` (checked against silverpoint 0.9.1; not filed). Found on the way: the user message of an LLM call renders empty when its content is only stripped HTML (expected), and the UI has almost no styling yet (design pass before P10) |
+| 2026-11-01 | P7-01.1, 01.2 | Done | PR #44; Tasks v1.6 (P7 detailed). `hatch_build.py` loads `_webapp/build.py` by path (stdlib only, tested) and calls `export()` + `write_csp()`; `require-runtime-dependencies` because the export imports the app; dev `_frontend/` excluded from the wheel and the sdist. `serve` reads `csp.json` from the bundle (not served). Wheel 15 MB / 915 frontend files; `uv build` ~3 min. Wheel boot with only the venv on `PATH`: UI + ingest after 2.8 s. CI job `wheel` |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).
@@ -1737,3 +1869,4 @@ parallel, on the S2 branch).
 | 1.3 | 2026-10-31 | Ernesto Crespo (with Claude) | Phase P4 detailed: 11 atomic tasks in 4 batches; Delta `changes/2026-10-p4-query-prep/` (A-05 DTO reference, A-10 kind mapping) folded into API v1.4, Data Model v1.3 |
 | 1.4 | 2026-11-01 | Ernesto Crespo (with Claude) | Phase P5 detailed: 12 atomic tasks in 4 batches; Granian embedded server, startup order and exit-code mapping as design notes; store addition `count_purgeable` owned by P5-03.2; span re-deriver for `rebuild` (P5-03.3) |
 | 1.5 | 2026-11-01 | Ernesto Crespo (with Claude) | Phase P6 detailed: 22 atomic tasks in 7 batches; view-model split for testability; Analyze A-12 resolved (Delta `changes/2026-11-p6-ui-prep/`: page loads always call the auth hook, events may reuse it ≤ 30 s per client token); upstream issues drafted, filing left to the maintainer |
+| 1.6 | 2026-11-01 | Ernesto Crespo (with Claude) | Phase P7 detailed: 10 atomic tasks in 4 batches plus two deferred (P7-03.2 waits for P8-03; P7-06.1 is the maintainer's release). `csp.json` written by the wheel hook (DD-018), sdist builds need Bun; maintainer-only publishing steps called out |
