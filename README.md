@@ -9,9 +9,10 @@ on your infra. Embed it as a page in your own app or run it standalone.
 > are built: storage on SQLite and PostgreSQL, OTLP ingest (HTTP and gRPC), the query layer, the
 > runtime with its CLI, and the UI (Dashboard, Runs, Trace with span drawer, agent graph and
 > replay, Sessions, Settings), served standalone by `serve` with a Content-Security-Policy or
-> embedded in a host Reflex app. Packaging (P7) is in progress: the wheel now ships the
-> pre-built frontend and boots without Node or Bun; the container image and compose files come
-> next. Nothing is published on PyPI yet.
+> embedded in a host Reflex app. Packaging (P7) is in progress: the wheel ships the pre-built
+> frontend and boots without Node or Bun, and the container image and `compose.yaml` work when
+> built from source; the PostgreSQL topology and the release workflow come next. Nothing is
+> published on PyPI or GHCR yet.
 > See [Roadmap](#roadmap).
 
 ## Why
@@ -45,6 +46,19 @@ uvx reflex-agentlens serve    # UI + OTLP/HTTP on :8000, OTLP/gRPC on :4317, SQL
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:8000
 export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer%20<api-key>"
 ```
+
+From a source checkout you can already build the image and try it with Docker Compose:
+
+```bash
+docker build -t reflex-agentlens:dev .
+AGENTLENS_IMAGE=reflex-agentlens:dev docker compose up -d --wait   # http://localhost:8000
+docker compose exec agentlens cat /data/bootstrap-api-key          # API key of Project "default"
+```
+
+`compose.yaml` publishes on `127.0.0.1` only and runs without a UI login (`auth.mode=none`), so it
+is meant for a laptop. Change the ports with `AGENTLENS_HTTP_PORT` / `AGENTLENS_GRPC_PORT`. When
+you run the image yourself behind a different host port or a proxy, set
+`AGENTLENS_SERVER_PUBLIC_URL` so the UI connects back to the right address.
 
 ```python
 import reflex as rx
@@ -135,7 +149,11 @@ CI (GitHub Actions) runs lint, types, the import contracts and the traceability 
 on Python 3.11–3.13 with SQLite and against PostgreSQL 15 and 18; a `smoke` job that exports the
 frontend, boots `serve` and drives it (and a host app that mounts agentlens) in Chromium; a
 `wheel` job that builds the wheel and the sdist and boots the wheel in a fresh venv with no Node or
-Bun on `PATH` (UI and ingest within 30 s); and gitleaks plus pip-audit on every pull request. Run the smoke suite locally with
+Bun on `PATH` (UI and ingest within 30 s); a `docker` job that runs hadolint, builds the image,
+scans it with trivy (no unwaived CRITICAL findings) and runs `tests/docker` (read-only root,
+`collect` against PostgreSQL, `compose.yaml` up to a visible Run); and gitleaks plus pip-audit on
+every pull request. Run the Docker tests locally with
+`AGENTLENS_IMAGE=reflex-agentlens:dev uv run pytest tests/docker`. Run the smoke suite locally with
 `AGENTLENS_SMOKE=1 uv run pytest tests/smoke` after building the frontend.
 
 ## Roadmap
@@ -149,7 +167,7 @@ Bun on `PATH` (UI and ingest within 30 s); and gitleaks plus pip-audit on every 
 | P4 | Query: DTOs, keyset cursors, Runs/Trace/Sessions/Dashboard queries, agent graph, admin service | Done |
 | P5 | Runtime, CLI and ops: lifespan, bootstrap, standalone auth, graceful shutdown, self-telemetry | Done |
 | P6 | UI: Runs, Trace, Sessions, Dashboard, Settings; standalone app and CSP; browser smoke suite; [silverpoint issue drafts](docs/upstream-issues.md) | Done |
-| P7 | Delivery: wheel with the pre-built frontend, PyPI, container image, compose files | In progress — wheel done |
+| P7 | Delivery: wheel with the pre-built frontend, PyPI, container image, compose files | In progress — wheel, image and `compose.yaml` done |
 | P8 | Recipes and benchmarks | Planned |
 | P9 | Docs and site | Planned |
 | P10 | Release | Planned |
