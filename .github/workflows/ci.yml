@@ -143,3 +143,27 @@ jobs:
         run: >-
           uv run pytest -p no:randomly -v
           tests/integration/cli/test_standalone_serve.py tests/smoke
+
+  wheel:
+    # P7-01 (DD-002, REQ-200.b, 210.b): build the wheel (the hook exports the frontend with Bun)
+    # and the sdist, then boot the wheel in a fresh venv whose PATH holds no node or bun.
+    name: wheel (build + boot without a JS runtime)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4.4"
+      - run: uv sync --frozen
+      - name: build the wheel and the sdist
+        run: uv build --wheel --sdist -o dist
+      - name: boot the wheel without node or bun
+        run: |
+          AGENTLENS_WHEEL="$(ls dist/*.whl)" uv run pytest -p no:randomly -v -s tests/packaging

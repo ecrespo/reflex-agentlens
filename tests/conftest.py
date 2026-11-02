@@ -3,7 +3,8 @@
 - Hypothesis profiles: ``ci`` (more examples, derandomized, no deadline) and ``dev`` (fast).
   Selected with ``HYPOTHESIS_PROFILE``; defaults to ``dev``.
 - Tests marked ``pg`` are skipped unless ``AGENTLENS_TEST_PG_URL`` is set; tests marked ``smoke``
-  (browser, built frontend) unless ``AGENTLENS_SMOKE=1`` (the CI ``smoke`` job).
+  (browser, built frontend) unless ``AGENTLENS_SMOKE=1`` (the CI ``smoke`` job); tests marked
+  ``packaging`` unless ``AGENTLENS_WHEEL`` names a built wheel (the CI ``wheel`` job).
 - Database fixtures: ``sqlite_engine`` (in-memory, foreign keys on) and ``pg_engine`` (a fresh
   schema per test, dropped afterwards).
 """
@@ -27,16 +28,20 @@ PG_URL_ENV = "AGENTLENS_TEST_PG_URL"
 
 
 SMOKE_ENV = "AGENTLENS_SMOKE"
+WHEEL_ENV = "AGENTLENS_WHEEL"
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     skip_pg = pytest.mark.skip(reason=f"{PG_URL_ENV} is not set")
     skip_smoke = pytest.mark.skip(reason=f"browser smoke test: set {SMOKE_ENV}=1")
+    skip_wheel = pytest.mark.skip(reason=f"packaging test: set {WHEEL_ENV} to a built wheel")
     for item in items:
         if "pg" in item.keywords and not os.environ.get(PG_URL_ENV):
             item.add_marker(skip_pg)
         if "smoke" in item.keywords and os.environ.get(SMOKE_ENV) != "1":
             item.add_marker(skip_smoke)
+        if "packaging" in item.keywords and not os.environ.get(WHEEL_ENV):
+            item.add_marker(skip_wheel)
 
 
 @pytest.fixture

@@ -148,6 +148,7 @@ markers = [
     "slow: long-running test (benchmarks, large datasets)",
     "smoke: boots the packaged app end to end",
     "docker: needs a Docker daemon",
+    "packaging: installs a built wheel; skipped unless AGENTLENS_WHEEL is set",
 ]
 
 [tool.coverage.run]
