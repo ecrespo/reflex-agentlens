@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import gzip
 import io
+import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -86,6 +87,24 @@ def test_prepare_workdir_rewrites_the_port_dd002(tmp_path: Path) -> None:
     rxconfig = (wd.root / "rxconfig.py").read_text()
     assert "telemetry_enabled=False" in rxconfig
     assert "cors_allowed_origins=['http://127.0.0.1:9123']" in rxconfig
+
+
+def test_prepare_workdir_prefers_the_shipped_csp_json_dd018(tmp_path: Path) -> None:
+    bundle = fake_bundle(tmp_path)
+    shipped = "'sha256-c2hpcHBlZA=='"
+    (bundle / "csp.json").write_text(json.dumps({"script_hashes": [shipped]}))
+    wd = prepare_workdir(config(tmp_path), bundle, version="1")
+    assert wd.script_hashes == (shipped,)
+    assert not (wd.client / "csp.json").exists()  # not served as a static file
+
+
+def test_prepare_workdir_ignores_a_malformed_csp_json(tmp_path: Path) -> None:
+    bundle = fake_bundle(tmp_path)
+    (bundle / "csp.json").write_text(json.dumps({"script_hashes": ["'unsafe-inline'"]}))
+    wd = prepare_workdir(config(tmp_path), bundle, version="1")
+    assert wd.script_hashes == tuple(
+        sorted(inline_script_hashes(PAGE) + inline_script_hashes("<script>other()</script>"))
+    )
 
 
 def test_prepare_workdir_is_repeatable_and_follows_public_url(tmp_path: Path) -> None:
