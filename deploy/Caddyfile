@@ -38,9 +38,16 @@ http://{$AGENTLENS_DOMAIN} {
 		}
 	}
 
-	# UI, its event websocket and the operational routes to app.
+	# UI, its event websocket and the operational routes to app. Identity headers from clients
+	# are dropped, so nobody can claim a user when app runs in auth.mode=proxy. For proxy mode,
+	# add a `forward_auth` to your login service here with `copy_headers X-Forwarded-User
+	# X-Forwarded-Groups`, remove the two header_up lines and set AGENTLENS_TRUSTED_PROXIES to this
+	# network.
 	handle {
-		reverse_proxy app:8000
+		reverse_proxy app:8000 {
+			header_up -X-Forwarded-User
+			header_up -X-Forwarded-Groups
+		}
 	}
 }
 

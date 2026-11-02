@@ -79,6 +79,9 @@ def test_only_caddy_publishes_ports_req205b(stack: Stack) -> None:
     for name in ("postgres", "app", "collector"):
         assert set(spec["services"][name]["networks"]) == {"internal"}
     assert spec["services"]["app"]["environment"]["AGENTLENS_SERVER_INGEST_ENABLED"] == "false"
+    caddyfile = (ROOT / "deploy" / "Caddyfile").read_text()
+    for header in ("X-Forwarded-User", "X-Forwarded-Groups"):  # no forged identities (proxy mode)
+        assert f"header_up -{header}" in caddyfile
 
 
 def test_every_service_is_healthy_with_two_collectors_req205a_c(stack: Stack) -> None:
