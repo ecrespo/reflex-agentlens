@@ -170,6 +170,16 @@ def test_cross_field_checks_name_the_missing_key(tmp_path: Path) -> None:
     assert info.value.key == "self_telemetry.endpoint"
 
 
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_req_224a_blank_admin_password_counts_as_missing(tmp_path: Path, blank: str) -> None:
+    """An empty value (``AGENTLENS_AUTH_ADMIN_PASSWORD=`` in a compose ``.env``) must never
+    become a password that an empty login form matches."""
+    env = {"AGENTLENS_AUTH_MODE": "password", "AGENTLENS_AUTH_ADMIN_PASSWORD": blank}
+    with pytest.raises(ConfigError) as info:
+        _load(tmp_path, env=env)
+    assert info.value.key == "auth.admin_password"
+
+
 def test_values_are_parsed_from_strings(tmp_path: Path) -> None:
     cfg = _load(
         tmp_path,

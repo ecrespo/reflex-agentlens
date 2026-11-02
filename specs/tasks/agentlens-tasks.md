@@ -1589,7 +1589,7 @@ P0-02.2 and P0-03.1). Branches: `feat/P7-<nn>-<slug>` from `develop`.
 - **REQ / design**: REQ-205, 072.b, DD-021
 - **Depends on**: P7-02.1
 - **Done**: `docker compose -f compose.postgres.yaml config` valid; local `up` to healthy.
-- [ ]
+- [x] 2026-11-01 · PR #46
 
 ### P7-04.2 · Production compose test
 - **What**: `tests/docker/test_compose_postgres.py`: `up --wait --scale collector=2` with
@@ -1599,7 +1599,7 @@ P0-02.2 and P0-03.1). Branches: `feat/P7-<nn>-<slug>` from `develop`.
 - **REQ / design**: REQ-205, 364, 072.b
 - **Depends on**: P7-04.1, P7-02.2
 - **Done**: test green in CI.
-- [ ]
+- [x] 2026-11-01 · PR #46
 
 ### P7-05.1 · Release workflow and changelog
 - **What**: `.github/workflows/release.yml` on `v*` tags reachable from `main`: build wheel +
@@ -1832,6 +1832,7 @@ the matrix). No requirement is deferred at this point.
 | 2026-11-01 | P6-12.1, 13.1 | Done | PR #43. **P6 complete.** `tests/smoke/` (marker `smoke`, gated by `AGENTLENS_SMOKE=1`): standalone `serve` seeded over OTLP/HTTP with an XSS Run, plus a host app (`tests/smoke/host`, colliding state names and routes, `reflex run --env prod --single-port`, ~2.5 min to build). A `Watch` records console errors, CSP violations (init-script probe), dialogs and requests outside the origin. The CI job `standalone` became `smoke`. Drafts for the four DD-017 issues in `docs/upstream-issues.md` (checked against silverpoint 0.9.1; not filed). Found on the way: the user message of an LLM call renders empty when its content is only stripped HTML (expected), and the UI has almost no styling yet (design pass before P10) |
 | 2026-11-01 | P7-01.1, 01.2 | Done | PR #44; Tasks v1.6 (P7 detailed). `hatch_build.py` loads `_webapp/build.py` by path (stdlib only, tested) and calls `export()` + `write_csp()`; `require-runtime-dependencies` because the export imports the app; dev `_frontend/` excluded from the wheel and the sdist. `serve` reads `csp.json` from the bundle (not served). Wheel 15 MB / 915 frontend files; `uv build` ~3 min. Wheel boot with only the venv on `PATH`: UI + ingest after 2.8 s. CI job `wheel` |
 | 2026-11-01 | P7-02.1, 02.2, 03.1 | Done | PR #45. Same `python:3.13.16-slim-trixie` in both stages (uv and Bun copied from their images); uv workspace needs the members' `pyproject.toml` in the build context; pip removed from the runtime. `collect` refuses SQLite, so its image test runs PostgreSQL on a private network; the healthcheck probes 8000 then 4318. 430 MB; trivy 0 CRITICAL / 46 HIGH (Debian base). The UI connects back to `localhost:<internal port>`: `compose.yaml` publishes the same port it listens on, otherwise `AGENTLENS_SERVER_PUBLIC_URL` is needed. Compose up → visible Run 6.8 s. CI job `docker` (hadolint, trivy via pinned images) |
+| 2026-11-01 | P7-04.1, 04.2 | Done | PR #46. Caddy reaches the collectors through Docker DNS (`dynamic a`, refresh 5 s, `/readyz` health checks), so scaling needs no Caddyfile change; collectors start after `app` is healthy (schema migrated). Caddy's automatic HTTP redirect picked the gRPC site's port, so plain HTTP redirects explicitly. An empty `AGENTLENS_BOOTSTRAP_API_KEY` fails config validation, so the compose file does not pass it; the key comes from the `app` volume. Collectors get a tmpfs `/data`. Stack healthy in ~20 s; 30 Runs sent twice (HTTP + gRPC with TLS) → exactly 60 spans / 30 Runs |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).

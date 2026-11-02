@@ -1,0 +1,113 @@
+# Production topology (plan task P7-04.1; REQ-205, REQ-072.b, Tech Design DD-021 T3).
+#
+#   cp deploy/postgres.env.example .env     # then fill in every value
+#   docker compose -f compose.postgres.yaml up -d --wait
+#   docker compose -f compose.postgres.yaml up -d --wait --scale collector=3
+#   docker compose -f compose.postgres.yaml exec app cat /data/bootstrap-api-key
+#
+#   https://$AGENTLENS_DOMAIN           UI (app) and OTLP/HTTP /v1/* (collectors), via Caddy
+#   $AGENTLENS_DOMAIN:4317              OTLP/gRPC with TLS (collectors), via Caddy
+#
+# Only Caddy publishes ports. PostgreSQL, app and collectors live on an internal network.
+# `app` runs migrations (auto_migrate, under an advisory lock), the UI, the finalizer and the purge
+# jobs, and does not ingest; collectors ingest only and report ready once the schema is CURRENT.
+# Caddy gets a certificate automatically for a public domain; AGENTLENS_TLS=internal uses Caddy's
+# own CA instead (tests, private networks).
+
+name: reflex-agentlens
+
+x-agentlens: &agentlens
+  image: ${AGENTLENS_IMAGE:-ghcr.io/ecrespo/reflex-agentlens:latest}
+  read_only: true
+  tmpfs:
+    - /tmp
+  restart: unless-stopped
+  networks: [internal]
+
+x-database: &database
+  AGENTLENS_DATABASE_URL: "postgresql+asyncpg://agentlens:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/agentlens"
+
+services:
+  postgres:
+    image: postgres:18.6-trixie
+    environment:
+      POSTGRES_USER: agentlens
+      POSTGRES_DB: agentlens
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentlens -d agentlens"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+    networks: [internal]
+
+  app:
+    <<: *agentlens
+    command: ["serve"]
+    environment:
+      <<: *database
+      AGENTLENS_SERVER_INGEST_ENABLED: "false"
+      AGENTLENS_SERVER_GRPC_ENABLED: "false"
+      AGENTLENS_SERVER_PUBLIC_URL: "${AGENTLENS_PUBLIC_URL:-https://${AGENTLENS_DOMAIN:?set AGENTLENS_DOMAIN in .env}}"
+      AGENTLENS_AUTH_MODE: "${AGENTLENS_AUTH_MODE:-password}"
+      AGENTLENS_AUTH_ADMIN_PASSWORD: "${AGENTLENS_ADMIN_PASSWORD:-}"
+      AGENTLENS_AUTH_TRUSTED_PROXIES: "${AGENTLENS_TRUSTED_PROXIES:-}"
+    volumes:
+      - app-data:/data  # session secret and the bootstrap key file
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  collector:
+    <<: *agentlens
+    command: ["collect"]
+    environment:
+      <<: *database
+      AGENTLENS_SERVER_HTTP_HOST: "0.0.0.0"
+    tmpfs:
+      - /tmp
+      - /data
+    depends_on:
+      app:
+        condition: service_healthy  # the schema exists once app is up
+
+  caddy:
+    image: caddy:2.11.2-alpine
+    environment:
+      AGENTLENS_DOMAIN: "${AGENTLENS_DOMAIN:?set AGENTLENS_DOMAIN in .env}"
+      AGENTLENS_TLS: "${AGENTLENS_TLS:-auto}"
+    ports:
+      - "${AGENTLENS_HTTP_PORT:-80}:80"
+      - "${AGENTLENS_HTTPS_PORT:-443}:443"
+      - "${AGENTLENS_HTTPS_PORT:-443}:443/udp"
+      - "${AGENTLENS_GRPC_PORT:-4317}:4317"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    depends_on:
+      app:
+        condition: service_healthy
+      collector:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [internal, edge]
+
+networks:
+  internal:
+    internal: true
+  edge: {}
+
+volumes:
+  postgres-data:
+  app-data:
+  caddy-data:
+  caddy-config:

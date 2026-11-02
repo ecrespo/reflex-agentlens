@@ -257,7 +257,10 @@ class AgentlensConfig(BaseSettings):
 
     @model_validator(mode="after")
     def _cross_checks(self) -> AgentlensConfig:
-        if self.auth.mode == "password" and self.auth.admin_password is None:
+        password = self.auth.admin_password
+        if self.auth.mode == "password" and (
+            password is None or not password.get_secret_value().strip()  # blank = missing
+        ):
             raise ValueError("auth.admin_password: required when auth.mode = password")
         if self.self_telemetry.enabled and self.self_telemetry.endpoint is None:
             raise ValueError("self_telemetry.endpoint: required when self-telemetry is enabled")

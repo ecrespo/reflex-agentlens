@@ -1,0 +1,63 @@
+# Caddy in front of reflex-agentlens (plan task P7-04.1; DD-021 T3). Mounted by
+# compose.postgres.yaml. AGENTLENS_TLS selects the certificate source: `auto` (ACME for a public
+# domain) or `internal` (Caddy's own CA: tests and private networks).
+
+(tls-auto) {
+}
+
+(tls-internal) {
+	tls internal
+}
+
+# Collectors are found through Docker DNS, so `--scale collector=N` needs no change here.
+(collectors) {
+	dynamic a {
+		name collector
+		port {args[0]}
+		refresh 5s
+	}
+	lb_policy round_robin
+	lb_retries 2
+}
+
+# Plain HTTP only redirects (an explicit site: with the gRPC site on the same host, Caddy's
+# automatic redirect could pick the wrong port).
+http://{$AGENTLENS_DOMAIN} {
+	redir https://{$AGENTLENS_DOMAIN}{uri} 308
+}
+
+{$AGENTLENS_DOMAIN} {
+	import tls-{$AGENTLENS_TLS}
+
+	# OTLP/HTTP to the collectors.
+	handle /v1/* {
+		reverse_proxy {
+			import collectors 4318
+			health_uri /readyz
+			health_interval 5s
+		}
+	}
+
+	# UI, its event websocket and the operational routes to app. Identity headers from clients
+	# are dropped, so nobody can claim a user when app runs in auth.mode=proxy. For proxy mode,
+	# add a `forward_auth` to your login service here with `copy_headers X-Forwarded-User
+	# X-Forwarded-Groups`, remove the two header_up lines and set AGENTLENS_TRUSTED_PROXIES to this
+	# network.
+	handle {
+		reverse_proxy app:8000 {
+			header_up -X-Forwarded-User
+			header_up -X-Forwarded-Groups
+		}
+	}
+}
+
+# OTLP/gRPC with TLS to the collectors (h2c inside).
+{$AGENTLENS_DOMAIN}:4317 {
+	import tls-{$AGENTLENS_TLS}
+	reverse_proxy {
+		import collectors 4317
+		transport http {
+			versions h2c
+		}
+	}
+}
