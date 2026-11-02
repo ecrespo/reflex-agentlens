@@ -1,0 +1,14 @@
+# Build context of the Dockerfile (P7-02.1): only what the builder copies.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!LICENSE
+!NOTICE
+!hatch_build.py
+!src/
+!site/pyproject.toml
+!examples/pyproject.toml
+src/reflex_agentlens/_frontend/
+**/__pycache__/
+**/*.py[cod]

@@ -1,0 +1,2 @@
+# Waived trivy findings for the container image (REQ-326.a). One CVE ID per line, each with a
+# comment that says why it is waived and when to look at it again. Empty means no waivers.

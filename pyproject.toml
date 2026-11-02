@@ -147,7 +147,7 @@ markers = [
     "pg: needs PostgreSQL; skipped unless AGENTLENS_TEST_PG_URL is set",
     "slow: long-running test (benchmarks, large datasets)",
     "smoke: boots the packaged app end to end",
-    "docker: needs a Docker daemon",
+    "docker: needs a Docker daemon and a built image; skipped unless AGENTLENS_IMAGE is set",
     "packaging: installs a built wheel; skipped unless AGENTLENS_WHEEL is set",
 ]
 
