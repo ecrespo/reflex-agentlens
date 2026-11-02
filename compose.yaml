@@ -1,0 +1,35 @@
+# Try reflex-agentlens on your machine (plan task P7-03.1; REQ-204, Tech Design DD-021 T2).
+#
+#   docker compose up -d --wait
+#   open http://localhost:8000          # UI; OTLP/HTTP on the same port, OTLP/gRPC on 4317
+#   docker compose exec agentlens cat /data/bootstrap-api-key   # API key of Project "default"
+#
+# One container, SQLite on the named volume `agentlens-data`. Ports are published on 127.0.0.1
+# only and the UI has no login (auth.mode=none, set explicitly): this file is for a laptop. For a
+# shared server use compose.postgres.yaml (TLS, PostgreSQL, scalable collectors).
+#
+# Change the ports with AGENTLENS_HTTP_PORT / AGENTLENS_GRPC_PORT. The container listens on the
+# same port it publishes, because the pre-built UI connects back to the port it is served on.
+
+name: reflex-agentlens
+
+services:
+  agentlens:
+    image: ${AGENTLENS_IMAGE:-ghcr.io/ecrespo/reflex-agentlens:latest}
+    command: ["serve"]
+    environment:
+      AGENTLENS_AUTH_MODE: "none"
+      AGENTLENS_SERVER_HTTP_PORT: "${AGENTLENS_HTTP_PORT:-8000}"
+      AGENTLENS_SERVER_GRPC_PORT: "${AGENTLENS_GRPC_PORT:-4317}"
+    ports:
+      - "127.0.0.1:${AGENTLENS_HTTP_PORT:-8000}:${AGENTLENS_HTTP_PORT:-8000}"
+      - "127.0.0.1:${AGENTLENS_GRPC_PORT:-4317}:${AGENTLENS_GRPC_PORT:-4317}"
+    volumes:
+      - agentlens-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    restart: unless-stopped
+
+volumes:
+  agentlens-data:
