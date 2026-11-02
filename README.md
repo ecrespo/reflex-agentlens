@@ -10,9 +10,9 @@ on your infra. Embed it as a page in your own app or run it standalone.
 > runtime with its CLI, and the UI (Dashboard, Runs, Trace with span drawer, agent graph and
 > replay, Sessions, Settings), served standalone by `serve` with a Content-Security-Policy or
 > embedded in a host Reflex app. Packaging (P7) is in progress: the wheel ships the pre-built
-> frontend and boots without Node or Bun, and the container image and `compose.yaml` work when
-> built from source; the PostgreSQL topology and the release workflow come next. Nothing is
-> published on PyPI or GHCR yet.
+> frontend and boots without Node or Bun; the container image, `compose.yaml` and the production
+> topology `compose.postgres.yaml` (PostgreSQL, scalable collectors, Caddy with TLS) work when
+> built from source; the release workflow comes next. Nothing is published on PyPI or GHCR yet.
 > See [Roadmap](#roadmap).
 
 ## Why
@@ -59,6 +59,16 @@ docker compose exec agentlens cat /data/bootstrap-api-key          # API key of 
 is meant for a laptop. Change the ports with `AGENTLENS_HTTP_PORT` / `AGENTLENS_GRPC_PORT`. When
 you run the image yourself behind a different host port or a proxy, set
 `AGENTLENS_SERVER_PUBLIC_URL` so the UI connects back to the right address.
+
+For a shared server, `compose.postgres.yaml` runs PostgreSQL, the UI (`app`), horizontally
+scalable collectors and Caddy, the only service that publishes ports (HTTPS with an automatic
+certificate, OTLP/HTTP under `/v1/*`, OTLP/gRPC with TLS on 4317). Copy
+`deploy/postgres.env.example` to `.env`, fill it in, then:
+
+```bash
+docker compose -f compose.postgres.yaml up -d --wait --scale collector=2
+docker compose -f compose.postgres.yaml exec app cat /data/bootstrap-api-key
+```
 
 ```python
 import reflex as rx
@@ -151,7 +161,8 @@ frontend, boots `serve` and drives it (and a host app that mounts agentlens) in 
 `wheel` job that builds the wheel and the sdist and boots the wheel in a fresh venv with no Node or
 Bun on `PATH` (UI and ingest within 30 s); a `docker` job that runs hadolint, builds the image,
 scans it with trivy (no unwaived CRITICAL findings) and runs `tests/docker` (read-only root,
-`collect` against PostgreSQL, `compose.yaml` up to a visible Run); and gitleaks plus pip-audit on
+`collect` against PostgreSQL, `compose.yaml` up to a visible Run, `compose.postgres.yaml` with two
+collectors behind Caddy and every span stored exactly once); and gitleaks plus pip-audit on
 every pull request. Run the Docker tests locally with
 `AGENTLENS_IMAGE=reflex-agentlens:dev uv run pytest tests/docker`. Run the smoke suite locally with
 `AGENTLENS_SMOKE=1 uv run pytest tests/smoke` after building the frontend.
@@ -167,7 +178,7 @@ every pull request. Run the Docker tests locally with
 | P4 | Query: DTOs, keyset cursors, Runs/Trace/Sessions/Dashboard queries, agent graph, admin service | Done |
 | P5 | Runtime, CLI and ops: lifespan, bootstrap, standalone auth, graceful shutdown, self-telemetry | Done |
 | P6 | UI: Runs, Trace, Sessions, Dashboard, Settings; standalone app and CSP; browser smoke suite; [silverpoint issue drafts](docs/upstream-issues.md) | Done |
-| P7 | Delivery: wheel with the pre-built frontend, PyPI, container image, compose files | In progress — wheel, image and `compose.yaml` done |
+| P7 | Delivery: wheel with the pre-built frontend, PyPI, container image, compose files | In progress — wheel, image and both compose topologies done |
 | P8 | Recipes and benchmarks | Planned |
 | P9 | Docs and site | Planned |
 | P10 | Release | Planned |
