@@ -1613,7 +1613,7 @@ P0-02.2 and P0-03.1). Branches: `feat/P7-<nn>-<slug>` from `develop`.
 - **Depends on**: P7-02.2
 - **Done**: unit tests of `scripts/changelog.py`; dry-run job green; `actionlint` clean.
   Publishing is verified in P7-06.1.
-- [ ]
+- [x] 2026-11-02 · PR #47
 
 ### P7-06.1 · Milestone M2: `0.1.0a1`
 - **What**: maintainer creates the PyPI trusted publisher and GHCR permissions, bumps to
@@ -1833,6 +1833,7 @@ the matrix). No requirement is deferred at this point.
 | 2026-11-01 | P7-01.1, 01.2 | Done | PR #44; Tasks v1.6 (P7 detailed). `hatch_build.py` loads `_webapp/build.py` by path (stdlib only, tested) and calls `export()` + `write_csp()`; `require-runtime-dependencies` because the export imports the app; dev `_frontend/` excluded from the wheel and the sdist. `serve` reads `csp.json` from the bundle (not served). Wheel 15 MB / 915 frontend files; `uv build` ~3 min. Wheel boot with only the venv on `PATH`: UI + ingest after 2.8 s. CI job `wheel` |
 | 2026-11-01 | P7-02.1, 02.2, 03.1 | Done | PR #45. Same `python:3.13.16-slim-trixie` in both stages (uv and Bun copied from their images); uv workspace needs the members' `pyproject.toml` in the build context; pip removed from the runtime. `collect` refuses SQLite, so its image test runs PostgreSQL on a private network; the healthcheck probes 8000 then 4318. 430 MB; trivy 0 CRITICAL / 46 HIGH (Debian base). The UI connects back to `localhost:<internal port>`: `compose.yaml` publishes the same port it listens on, otherwise `AGENTLENS_SERVER_PUBLIC_URL` is needed. Compose up → visible Run 6.8 s. CI job `docker` (hadolint, trivy via pinned images) |
 | 2026-11-01 | P7-04.1, 04.2 | Done | PR #46. Caddy reaches the collectors through Docker DNS (`dynamic a`, refresh 5 s, `/readyz` health checks), so scaling needs no Caddyfile change; collectors start after `app` is healthy (schema migrated). Caddy's automatic HTTP redirect picked the gRPC site's port, so plain HTTP redirects explicitly. An empty `AGENTLENS_BOOTSTRAP_API_KEY` fails config validation, so the compose file does not pass it; the key comes from the `app` volume. Collectors get a tmpfs `/data`. Stack healthy in ~20 s; 30 Runs sent twice (HTTP + gRPC with TLS) → exactly 60 spans / 30 Runs |
+| 2026-11-02 | P7-05.1 | Done | PR #47. `uv publish --trusted-publishing always` instead of the pypa action; buildx/`gh` from the runner; only QEMU and the artifact actions pinned. A `workflow_dispatch` dry run needs the workflow on `main`, so PRs touching the release files also run it as a dry run. `scripts/release_plan.py` (PEP 440 → SemVer image tags) and `scripts/changelog.py` unit tested; the changelog script runs git from the repo root (another test changes cwd). Security review fixes in PR #46: blank `auth.admin_password` counts as missing; Caddy drops client-sent identity headers |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).
