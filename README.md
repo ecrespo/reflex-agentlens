@@ -5,12 +5,12 @@ OpenTelemetry GenAI traces from LangGraph, PydanticAI, OpenAI Agents or any OTLP
 live run timelines, graph replay, tool-call inspection, token and cost analytics — in pure Python,
 on your infra. Embed it as a page in your own app or run it standalone.
 
-> **Status: pre-alpha, not usable yet.** The v0.1 specification is approved and phases P0–P5
-> are built: storage on SQLite and PostgreSQL, OTLP ingest (HTTP and gRPC), the query layer, and
-> the runtime with its CLI. The UI (P6) is in progress: the Runs, Trace (span drawer, agent graph,
-> replay), Sessions, Dashboard and Settings pages and the standalone app (`serve` with the
-> pre-built frontend and a Content-Security-Policy) are done; the browser smoke suite comes next.
-> Nothing is published on PyPI. See [Roadmap](#roadmap).
+> **Status: pre-alpha, not usable yet.** The v0.1 specification is approved and phases P0–P6
+> are built: storage on SQLite and PostgreSQL, OTLP ingest (HTTP and gRPC), the query layer, the
+> runtime with its CLI, and the UI (Dashboard, Runs, Trace with span drawer, agent graph and
+> replay, Sessions, Settings), served standalone by `serve` with a Content-Security-Policy or
+> embedded in a host Reflex app. Packaging (P7) comes next; nothing is published on PyPI yet.
+> See [Roadmap](#roadmap).
 
 ## Why
 
@@ -125,8 +125,10 @@ pull request. Tests cite the requirement they verify (`REQ-NNN.x`). See [CONTRIB
 full workflow and [AGENTS.md](AGENTS.md) for coding-agent guidance.
 
 CI (GitHub Actions) runs lint, types, the import contracts and the traceability report; the tests
-on Python 3.11–3.13 with SQLite and against PostgreSQL 15 and 18; and gitleaks plus pip-audit on
-every pull request.
+on Python 3.11–3.13 with SQLite and against PostgreSQL 15 and 18; a `smoke` job that exports the
+frontend, boots `serve` and drives it (and a host app that mounts agentlens) in Chromium; and
+gitleaks plus pip-audit on every pull request. Run the smoke suite locally with
+`AGENTLENS_SMOKE=1 uv run pytest tests/smoke` after building the frontend.
 
 ## Roadmap
 
@@ -138,7 +140,7 @@ every pull request.
 | P3 | Ingest: OTLP/HTTP and gRPC, semconv mapping, derivation, redaction, pricing, admission and limits | Done |
 | P4 | Query: DTOs, keyset cursors, Runs/Trace/Sessions/Dashboard queries, agent graph, admin service | Done |
 | P5 | Runtime, CLI and ops: lifespan, bootstrap, standalone auth, graceful shutdown, self-telemetry | Done |
-| P6 | UI: Runs, Trace, Sessions, Dashboard, Settings (done); standalone app and CSP (done); smoke suite (next) | In progress — batches 1–6 of 7 |
+| P6 | UI: Runs, Trace, Sessions, Dashboard, Settings; standalone app and CSP; browser smoke suite; [silverpoint issue drafts](docs/upstream-issues.md) | Done |
 | P7 | Delivery: wheel with the pre-built frontend, PyPI, container image | Planned |
 | P8 | Recipes and benchmarks | Planned |
 | P9 | Docs and site | Planned |

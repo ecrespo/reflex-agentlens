@@ -1480,7 +1480,7 @@ tests under `tests/unit/ui/` (view models, URL codecs, Mermaid text, sanitizers:
 - **REQ / design**: REQ-190.d, 193.a, 324, 327, 363
 - **Depends on**: P6-11.2
 - **Done**: `smoke` job green in CI.
-- [ ]
+- [x] 2026-11-01 · PR #43
 
 ### P6-13.1 · Upstream silverpoint issues
 - **What**: draft the four DD-017 issues (N-series line chart, quantile box plot, time-scale
@@ -1489,7 +1489,7 @@ tests under `tests/unit/ui/` (view models, URL codecs, Mermaid text, sanitizers:
 - **REQ / design**: PRD §4.1 goal, DD-017
 - **Depends on**: P6-09.1
 - **Done**: drafts committed and linked from the docs.
-- [ ]
+- [x] 2026-11-01 · PR #43
 
 **Suggested batches:** (1) P6-01.1, P6-01.2, P6-02.1, P6-03.1, P6-03.2 · (2) P6-04.1, P6-04.2,
 P6-05.1, P6-05.2 · (3) P6-06.1, P6-06.2, P6-07.1, P6-07.2 · (4) P6-08.1, P6-09.1 · (5) P6-10.1,
@@ -1698,6 +1698,7 @@ the matrix). No requirement is deferred at this point.
 | 2026-11-01 | P6-08.1, 09.1 | Done | PR #39. View models `views/sessions.py`, `views/dashboard.py`; pages `sessions_page.py`, `session_page.py`, `dashboard_page.py`. silverpoint draws its demo dataset when `data` is omitted: every chart gets `data`, and a compile test over all pages enforces it. Cost values become `float` only as chart inputs; every displayed cost is formatted from the `Decimal`. Click-to-filter (REQ-141.c) keeps the Runs URLs on the server and the browser returns only a row key. Dashboard live refresh uses `subscribe(min_interval=10)` and re-resolves the viewer per step |
 | 2026-11-01 | P6-10.1, 10.2, 10.3 | Done | PR #41. View models `views/settings.py`, `views/pricing.py`, `views/redaction.py`; one tabbed `settings_page.py`. Mutations are checked in the page (admin, demo) before `AdminService` checks again; refused actions show inline and keep the page. The key plaintext lives in state only while its dialog is open. Prices are parsed as `Decimal` from text. CSV import is paste-based (no upload directory needed); file upload can come later. Pricing saves do not re-price stored calls: the done message points at Recompute. |
 | 2026-11-01 | P6-11.1, 11.2 | Done | PR #42. `app/standalone.py` (`standalone_app`, built-in auth hook, `/login` as a native POST form because `rx.el.form` always prevents the submit), `components/shell.py`, `_webapp/build.py` (export into the self-ignored `_frontend/`), `app/webserve.py`. `mount()` delegates to an internal `install()` with `wrap`/`lifespan`; `serve` builds the app with `lifespan=False`, registers its own runtime and drives Reflex's ASGI lifespan (event processor) itself. Runtime rxconfig uses in-memory state (the disk default would write per-client files) and pins CORS. CSP hashes are computed at startup from the shipped HTML (no `csp.json` yet; P7-01 may move it into the build hook). Without a build, `/` answers 503 with the build command. New CI job `standalone` (Bun 1.4.4). Playwright check on :9123: 0 console errors, 0 CSP violations, 0 foreign requests |
+| 2026-11-01 | P6-12.1, 13.1 | Done | PR #43. **P6 complete.** `tests/smoke/` (marker `smoke`, gated by `AGENTLENS_SMOKE=1`): standalone `serve` seeded over OTLP/HTTP with an XSS Run, plus a host app (`tests/smoke/host`, colliding state names and routes, `reflex run --env prod --single-port`, ~2.5 min to build). A `Watch` records console errors, CSP violations (init-script probe), dialogs and requests outside the origin. The CI job `standalone` became `smoke`. Drafts for the four DD-017 issues in `docs/upstream-issues.md` (checked against silverpoint 0.9.1; not filed). Found on the way: the user message of an LLM call renders empty when its content is only stripped HTML (expected), and the UI has almost no styling yet (design pass before P10) |
 
 Suggested first batch (after Analyze): **P0-01.1, P0-02.1, P0-02.2, P0-07.1** (the last one in
 parallel, on the S2 branch).
