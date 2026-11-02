@@ -12,7 +12,9 @@ on your infra. Embed it as a page in your own app or run it standalone.
 > embedded in a host Reflex app. Packaging (P7) is in progress: the wheel ships the pre-built
 > frontend and boots without Node or Bun; the container image, `compose.yaml` and the production
 > topology `compose.postgres.yaml` (PostgreSQL, scalable collectors, Caddy with TLS) work when
-> built from source; the release workflow comes next. Nothing is published on PyPI or GHCR yet.
+> built from source, and a release workflow is ready. Nothing is published on PyPI or GHCR yet:
+> the first pre-release (`0.1.0a1`) waits for the maintainer to set up the PyPI trusted publisher
+> and the GHCR package.
 > See [Roadmap](#roadmap).
 
 ## Why
@@ -163,7 +165,9 @@ Bun on `PATH` (UI and ingest within 30 s); a `docker` job that runs hadolint, bu
 scans it with trivy (no unwaived CRITICAL findings) and runs `tests/docker` (read-only root,
 `collect` against PostgreSQL, `compose.yaml` up to a visible Run, `compose.postgres.yaml` with two
 collectors behind Caddy and every span stored exactly once); and gitleaks plus pip-audit on
-every pull request. Run the Docker tests locally with
+every pull request. The `release` workflow publishes on `v*` tags on `main` (PyPI trusted
+publishing, multi-arch GHCR image, GitHub release with notes from `scripts/changelog.py`) and runs
+as a dry run on pull requests that change the release files. Run the Docker tests locally with
 `AGENTLENS_IMAGE=reflex-agentlens:dev uv run pytest tests/docker`. Run the smoke suite locally with
 `AGENTLENS_SMOKE=1 uv run pytest tests/smoke` after building the frontend.
 
@@ -178,7 +182,7 @@ every pull request. Run the Docker tests locally with
 | P4 | Query: DTOs, keyset cursors, Runs/Trace/Sessions/Dashboard queries, agent graph, admin service | Done |
 | P5 | Runtime, CLI and ops: lifespan, bootstrap, standalone auth, graceful shutdown, self-telemetry | Done |
 | P6 | UI: Runs, Trace, Sessions, Dashboard, Settings; standalone app and CSP; browser smoke suite; [silverpoint issue drafts](docs/upstream-issues.md) | Done |
-| P7 | Delivery: wheel with the pre-built frontend, PyPI, container image, compose files | In progress — wheel, image and both compose topologies done |
+| P7 | Delivery: wheel with the pre-built frontend, PyPI, container image, compose files | In progress — wheel, image, compose topologies and release workflow done; `0.1.0a1` pending |
 | P8 | Recipes and benchmarks | Planned |
 | P9 | Docs and site | Planned |
 | P10 | Release | Planned |
