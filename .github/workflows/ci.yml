@@ -167,3 +167,36 @@ jobs:
       - name: boot the wheel without node or bun
         run: |
           AGENTLENS_WHEEL="$(ls dist/*.whl)" uv run pytest -p no:randomly -v -s tests/packaging
+
+  docker:
+    # P7-02.2 / P7-03.1 (REQ-203, 204, 326, 364, DD-021): build the image, lint the Dockerfile,
+    # scan the image, then run it hardened (read-only root, no capabilities) and through compose.
+    name: docker (image, scan, compose)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      AGENTLENS_IMAGE: reflex-agentlens:ci
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - name: hadolint
+        run: docker run --rm -i hadolint/hadolint:v2.15.1-alpine hadolint - < Dockerfile
+      - name: build the image
+        run: docker build -t "$AGENTLENS_IMAGE" .
+      - name: trivy (fails on unwaived CRITICAL findings; HIGH reported)
+        run: |
+          scan() {
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+              -v "$PWD/.trivyignore:/.trivyignore:ro" aquasec/trivy:0.75.0 image --quiet \
+              --scanners vuln --ignorefile /.trivyignore "$@" "$AGENTLENS_IMAGE"
+          }
+          scan --severity HIGH,CRITICAL --format table
+          scan --severity CRITICAL --exit-code 1
+      - run: uv sync --frozen
+      - name: image and compose tests
+        run: uv run pytest -p no:randomly -v -s tests/docker
